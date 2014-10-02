@@ -1,15 +1,15 @@
 #include "unp.h"
-#define MSG_CLIENT_TERM "Client terminated successfully\n"
-#define MSG_SERVER_CRASH "Client terminated due to Server crash\n"
 
-int writefd;
+static int writefd = -1;
+static void writeMsgAndExit(char *msg, int status) {
+    char writeBuf[MAXLINE] = "\nTime Client : ";
+    strcat(strcat(writeBuf, msg), "\n");
+    Write(writefd, writeBuf, strlen(writeBuf));
+    exit(status);
+}
 
-void sig_int(int signo) {
-    int len = strlen(MSG_CLIENT_TERM);
-    if (write(writefd, MSG_CLIENT_TERM, len) != len) {
-        err_sys("write error");
-    }
-    exit(0);
+static void sig_int(int signo) {
+    writeMsgAndExit("Terminated Successfully", 0);
 }
 
 int main(int argc, char **argv) {
@@ -19,47 +19,45 @@ int main(int argc, char **argv) {
     int sockfd, len;
 
     if (argc != 3) {
-        err_quit("Invalid arguments");
+        writeMsgAndExit("Invalid Arguments", -1);
     }
 
     hostAddr = argv[1];
     writefd = atoi(argv[2]);
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        err_sys("client socket error");
+        writeMsgAndExit("socket error", -1);
     }
 
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
-    /* daytime server */
     servAddr.sin_port   = htons(13);
 
     if (inet_pton(AF_INET, hostAddr, &servAddr.sin_addr) <= 0) {
-        err_quit("inet_pton error for %s", hostAddr);
+        writeMsgAndExit("inet_pton error", -1);
     }
 
     //TODO: Make socket non-blocking
     if (connect(sockfd, (SA *) &servAddr, sizeof(servAddr)) < 0) {
-        err_sys("socket connect error");
+        writeMsgAndExit("socket connect error", -1);
     }
     printf("Client succefully connected to server (%s)\n", hostAddr);
-    Signal(SIGINT, sig_int);
+
+    if (signal(SIGINT, sig_int) == SIG_ERR) {
+        writeMsgAndExit("signal error", -1);
+    }
 
     while ((len = read(sockfd, recvBuf, MAXLINE)) > 0) {
         recvBuf[len] = 0;       /* null terminate */
         if (fputs(recvBuf, stdout) == EOF) {
-            err_sys("fputs stdout error");
+            writeMsgAndExit("fputs stdout error", -1);
         }
     }
     if (len < 0) {
-        err_sys("socket read error");
+        writeMsgAndExit("socket read error", -1);
     }
     
-    len = strlen(MSG_SERVER_CRASH);
-    if (write(writefd, MSG_SERVER_CRASH, len) != len) {
-        err_sys("write error");
-    }
-    
+    writeMsgAndExit("Server Crash", -1);
     return 0;
 }
 

@@ -1,13 +1,40 @@
 #include "unp.h"
 #include<time.h>
 
+static void *echo_server(void* arg) {
+    int connfd;
+    char echoBuf[MAXLINE+1];
+    int len;
+
+    // Get connection socket fd
+    connfd = *((int *) arg);
+    free(arg);
+
+    // Make this thread detachable
+    Pthread_detach(pthread_self());
+
+retry:
+    while ((len = Readline(connfd, echoBuf, MAXLINE)) > 0) {
+        Writen(connfd, echoBuf, len);
+    }
+    if (len < 0 && errno == EINTR) {
+        goto retry;
+    } else if (len < 0) {
+        err_sys("echo server: read error");
+    }
+
+    printf("Client termination!\n");
+    Close(connfd);
+    return NULL;
+}
+
 static void *time_server(void* arg) {
     int connfd, n, maxfd;
     fd_set readfds;
     struct timeval timeout;
     time_t ticks;
     char strbuf[MAXLINE];
-    socklen_t len;
+    int len;
 
     // Get connection socket fd
     connfd = *((int *) arg);
@@ -29,7 +56,7 @@ static void *time_server(void* arg) {
 
         if (n != 0) {
             //TODO: check errno before terminating
-            printf("client termination!\n");
+            printf("Client termination!\n");
             break;
         }
 
@@ -43,19 +70,13 @@ static void *time_server(void* arg) {
         }
     }
 
-    if (close(connfd) == -1) {
-        err_sys("connection close error");
-    }
-    
+    Close(connfd);
     return NULL;
 }
 
-int main() {
-    int listenfd, *connfd;
-    struct sockaddr_in servAddr, cliAddr;
-    pthread_t tid;
-    char strbuf[MAXLINE];
-    socklen_t len;
+static int bind_and_listen(int portNo) {
+    int listenfd;
+    struct sockaddr_in servAddr;
 
     if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         err_sys("server socket error");
@@ -64,32 +85,63 @@ int main() {
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family      = AF_INET;
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servAddr.sin_port        = htons(13);   /* daytime server */
+    servAddr.sin_port        = htons(portNo);
 
     if (bind(listenfd, (SA *) &servAddr, sizeof(servAddr)) < 0) {
         err_sys("server listen socket bind error");
     }
 
-    // TODO: set backlog
+    // TODO: set backlog and non-blocking
     if (listen(listenfd, 0) < 0) {
         err_sys("sever socket listen error");
     }
 
-    while(1) {
-        len = sizeof(cliAddr);
-        connfd = (int *) malloc(sizeof(int));
+    return listenfd;
+}
 
-        if ((*connfd = accept(listenfd, (SA *) &cliAddr, &len)) < 0) {
-            // TODO:
-            //if (errno == EPROTO || errno == ECONNABORTED)
-            err_sys("connection accept error");
+static void spawn_child_service(int listenfd, void * (*pthread_func)(void *)) {
+    struct sockaddr_in cliAddr;
+    char strbuf[MAXLINE];
+    pthread_t tid;
+    socklen_t len;
+    int *connfd;
+
+    len = sizeof(cliAddr);
+    connfd = (int *) malloc(sizeof(int));
+
+    *connfd = Accept(listenfd, (SA *) &cliAddr, &len);
+
+    printf("New Connection from %s, port %d\n",
+            Inet_ntop(AF_INET, &cliAddr.sin_addr, strbuf, sizeof(strbuf)),
+            ntohs(cliAddr.sin_port));
+    // Spawn a new thread 
+    Pthread_create(&tid, NULL, pthread_func, connfd);
+}
+
+int main() {
+    int listenfd_echo, listenfd_time;
+    fd_set readfds;
+    int maxfd;
+
+    listenfd_echo = bind_and_listen(SERV_PORT);
+    listenfd_time = bind_and_listen(13);
+
+    maxfd = max(listenfd_echo, listenfd_time) + 1;
+    FD_ZERO(&readfds);
+    while(1) {
+        FD_SET(listenfd_echo, &readfds);
+        FD_SET(listenfd_time, &readfds);
+
+        if (select(maxfd, &readfds, NULL, NULL, NULL) < 0) {
+            err_sys("select error on echo and time listen sockets");
         }
 
-        printf("New Connection from %s, port %d\n",
-                Inet_ntop(AF_INET, &cliAddr.sin_addr, strbuf, sizeof(strbuf)),
-                ntohs(cliAddr.sin_port));
-        // Spawn a detachable thread 
-        Pthread_create(&tid, NULL, &time_server, connfd);
+        if (FD_ISSET(listenfd_echo, &readfds)) {
+            spawn_child_service(listenfd_echo, echo_server);
+        }
+        if (FD_ISSET(listenfd_time, &readfds)) {
+            spawn_child_service(listenfd_time, time_server);
+        }
     }
 
     return 0;

@@ -8,7 +8,6 @@ void sig_child(int signo) {
 int main(int argc, char **argv) {
     struct hostent *hostInfo;
     char hostAddr[INET_ADDRSTRLEN];
-    int pipefd[2];
 
     if (argc != 2) {
         err_quit("usage: \"client <IPAddress/HostName>\"");
@@ -39,17 +38,21 @@ int main(int argc, char **argv) {
 
     while (1) {
         int serviceOption, pid;
+        int pipefd[2];
 
         while(1) {
-            printf("\nEnter your service option:\n");
+            printf("\nServices\n");
+            printf("===============\n");
             printf("1. Echo Service\n");
             printf("2. Time Service\n");
             printf("3. Exit\n");
+            printf("Enter your option: ");
+
             if (scanf("%d", &serviceOption) != 1) {
-                err_quit("Invalid input!");
+                err_quit("\nInvalid input!");
             }
-            if (serviceOption < 2 || serviceOption > 3) {
-                err_msg("Invalid option!");
+            if (serviceOption < 1 || serviceOption > 3) {
+                err_msg("\nInvalid option!");
             } else {
                 // Correct option entered
                 break;
@@ -57,7 +60,7 @@ int main(int argc, char **argv) {
         }
 
         if (serviceOption == 3) {
-            printf("Thank you!\n");
+            printf("\nThank you!\n");
             return 0;
         }
 
@@ -72,11 +75,11 @@ int main(int argc, char **argv) {
         if (pid == 0) {
             // child process
             char writefd[5];
-            close(pipefd[0]);
-            sprintf(writefd, "%d", pipefd[1]);
+            Close(pipefd[0]);
+            snprintf(writefd, 5, "%d", pipefd[1]);
 
             if (serviceOption == 1) {
-                execlp("xterm", "xterm", "-e", "./time_cli", hostAddr, writefd,  (char *) 0);
+                execlp("xterm", "xterm", "-e", "./echo_cli", hostAddr, writefd,  (char *) 0);
             } else {
                 execlp("xterm", "xterm", "-e", "./time_cli", hostAddr, writefd,  (char *) 0);
             }
@@ -85,7 +88,7 @@ int main(int argc, char **argv) {
             int n, maxfd;
             fd_set readfds;
 
-            close(pipefd[1]);
+            Close(pipefd[1]);
             maxfd = pipefd[0] + 1;
             FD_ZERO(&readfds);
             while (1) {
@@ -95,7 +98,7 @@ int main(int argc, char **argv) {
                 FD_SET(fileno(stdin), &readfds);
                 FD_SET(pipefd[0], &readfds);
                 if (select(maxfd, &readfds, NULL, NULL, NULL) < 0) {
-                    err_sys("select error on connection socket");
+                    err_sys("select error on stdin and pipefd");
                 }
                 
                 if (FD_ISSET(fileno(stdin), &readfds)) {
@@ -114,7 +117,7 @@ int main(int argc, char **argv) {
                     }
                 }
             }
-            close(pipefd[0]);
+            Close(pipefd[0]);
         }
     }
     return 0;
