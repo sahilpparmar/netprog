@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
-    servAddr.sin_port   = htons(SERV_PORT);
+    servAddr.sin_port   = htons(ECHO_PORT);
 
     if (inet_pton(AF_INET, hostAddr, &servAddr.sin_addr) <= 0) {
         writeMsgAndExit("inet_pton error", -1);

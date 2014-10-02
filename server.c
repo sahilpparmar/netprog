@@ -134,8 +134,8 @@ int main() {
     fd_set readfds;
     int maxfd;
 
-    listenfd_echo = bind_and_listen(SERV_PORT);
-    listenfd_time = bind_and_listen(SERV_PORT+1);
+    listenfd_echo = bind_and_listen(ECHO_PORT);
+    listenfd_time = bind_and_listen(DAYTIME_PORT);
 
     maxfd = max(listenfd_echo, listenfd_time) + 1;
     FD_ZERO(&readfds);
