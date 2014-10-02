@@ -1,5 +1,5 @@
 #include "unp.h"
-#include<time.h>
+#include <time.h>
 
 static void *echo_server(void* arg) {
     int connfd;
@@ -20,10 +20,12 @@ retry:
     if (len < 0 && errno == EINTR) {
         goto retry;
     } else if (len < 0) {
-        err_sys("echo server: read error");
+        printf("Client termination: socket read returned with value -1");
+        printf(" and errno = %s\n", strerror(errno));
+    } else {
+        printf("Client termination: socket read returned with value 0\n");
     }
 
-    printf("Client termination!\n");
     Close(connfd);
     return NULL;
 }
@@ -51,12 +53,15 @@ static void *time_server(void* arg) {
         timeout.tv_usec = 0;
 
         if ((n = select(maxfd, &readfds, NULL, NULL, &timeout)) < 0) {
-            err_sys("select error on connection socket");
+            err_sys("Server termination: select error on connection socket");
         }
 
         if (n != 0) {
-            //TODO: check errno before terminating
-            printf("Client termination!\n");
+            if (errno != 0) {
+                printf("Client terminated by errno = %s\n", strerror(errno));
+            } else {
+                printf("Client terminated Successfully\n");
+            }
             break;
         }
 
@@ -66,7 +71,7 @@ static void *time_server(void* arg) {
         len = strlen(strbuf);
 
         if (write(connfd, strbuf, len) != len) {
-            err_sys("socket write error");
+            err_sys("Server termination: socket write error");
         }
     }
 
@@ -75,11 +80,11 @@ static void *time_server(void* arg) {
 }
 
 static int bind_and_listen(int portNo) {
-    int listenfd;
+    int listenfd, optVal;
     struct sockaddr_in servAddr;
 
     if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        err_sys("server socket error");
+        err_sys("Server termination: server socket error");
     }
 
     bzero(&servAddr, sizeof(servAddr));
@@ -87,13 +92,18 @@ static int bind_and_listen(int portNo) {
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servAddr.sin_port        = htons(portNo);
 
-    if (bind(listenfd, (SA *) &servAddr, sizeof(servAddr)) < 0) {
-        err_sys("server listen socket bind error");
+    // Set socket option -> SO_REUSEADDR
+    optVal = 1;
+    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optVal, sizeof(optVal)) < 0) {
+        err_sys("Server termination: setsockopt error");
     }
 
-    // TODO: set backlog and non-blocking
-    if (listen(listenfd, 0) < 0) {
-        err_sys("sever socket listen error");
+    if (bind(listenfd, (SA *) &servAddr, sizeof(servAddr)) < 0) {
+        err_sys("Server termination: server listen socket bind error");
+    }
+
+    if (listen(listenfd, LISTENQ) < 0) {
+        err_sys("Server termination: sever socket listen error");
     }
 
     return listenfd;
@@ -124,7 +134,7 @@ int main() {
     int maxfd;
 
     listenfd_echo = bind_and_listen(SERV_PORT);
-    listenfd_time = bind_and_listen(13);
+    listenfd_time = bind_and_listen(SERV_PORT+1);
 
     maxfd = max(listenfd_echo, listenfd_time) + 1;
     FD_ZERO(&readfds);
@@ -133,7 +143,7 @@ int main() {
         FD_SET(listenfd_time, &readfds);
 
         if (select(maxfd, &readfds, NULL, NULL, NULL) < 0) {
-            err_sys("select error on echo and time listen sockets");
+            err_sys("Server termination: select error on echo and time listen sockets");
         }
 
         if (FD_ISSET(listenfd_echo, &readfds)) {
