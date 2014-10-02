@@ -1,0 +1,2 @@
+#define DAYTIME_PORT 4554
+#define ECHO_PORT 5445

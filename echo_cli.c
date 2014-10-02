@@ -1,4 +1,5 @@
 #include "unp.h"
+#include "common.h"
 
 static int writefd = -1;
 static void writeMsgAndExit(char *msg, int status) {
