@@ -21,10 +21,10 @@ retry:
     if (len < 0 && errno == EINTR) {
         goto retry;
     } else if (len < 0) {
-        printf("Client termination: socket read returned with value -1");
+        printf("Echo Client termination: socket read returned with value -1");
         printf(" and errno = %s\n", strerror(errno));
     } else {
-        printf("Client termination: socket read returned with value 0\n");
+        printf("Echo Client termination: socket read returned with value 0\n");
     }
 
     Close(connfd);
@@ -59,9 +59,9 @@ static void *time_server(void* arg) {
 
         if (n != 0) {
             if (errno != 0) {
-                printf("Client terminated by errno = %s\n", strerror(errno));
+                printf("Time Client terminated by errno = %s\n", strerror(errno));
             } else {
-                printf("Client terminated Successfully\n");
+                printf("Time Client terminated Successfully\n");
             }
             break;
         }
@@ -79,6 +79,8 @@ static void *time_server(void* arg) {
     Close(connfd);
     return NULL;
 }
+
+static int socketFlags;
 
 static int bind_and_listen(int portNo) {
     int listenfd, optVal;
@@ -103,6 +105,13 @@ static int bind_and_listen(int portNo) {
         err_sys("Server termination: server listen socket bind error");
     }
 
+    // Make listening socket to be non-blocking
+    if (socketFlags = fcntl(listenfd, F_GETFL, 0) == -1)  {
+        err_sys("Server termination: fcntl fail to get socket options");
+    }
+    if (fcntl(listenfd, F_SETFL, socketFlags | O_NONBLOCK) == -1)  {
+        err_sys("Server termination: fcntl fail to set O_NONBLOCK socket option");
+    }
     if (listen(listenfd, LISTENQ) < 0) {
         err_sys("Server termination: sever socket listen error");
     }
@@ -121,6 +130,10 @@ static void spawn_child_service(int listenfd, void * (*pthread_func)(void *)) {
     connfd = (int *) malloc(sizeof(int));
 
     *connfd = Accept(listenfd, (SA *) &cliAddr, &len);
+    // Reset socket options to blocking
+    if (fcntl(*connfd, F_SETFL, socketFlags) == -1)  {
+        err_sys("Server termination: fcntl fail to reset socket options");
+    }
 
     printf("New Connection from %s, port %d\n",
             Inet_ntop(AF_INET, &cliAddr.sin_addr, strbuf, sizeof(strbuf)),
@@ -157,3 +170,4 @@ int main() {
 
     return 0;
 }
+

@@ -117,7 +117,6 @@ int main(int argc, char **argv) {
                         if (fputs(recvBuf, stdout) == EOF) {
                             err_sys("fputs stdout error");
                         }
-                        // TODO: terminate if server crashes
                         break;
                     }
                 }
