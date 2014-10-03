@@ -98,7 +98,12 @@ int main(int argc, char **argv) {
                 FD_SET(fileno(stdin), &readfds);
                 FD_SET(pipefd[0], &readfds);
                 if (select(maxfd, &readfds, NULL, NULL, NULL) < 0) {
-                    err_sys("select error on stdin and pipefd");
+                    if (errno == EINTR) {
+                        err_msg("\nClient termination due to errno = %s", strerror(errno));
+                        break;
+                    } else {
+                        err_sys("select error on stdin and pipefd");
+                    }
                 }
                 
                 if (FD_ISSET(fileno(stdin), &readfds)) {
