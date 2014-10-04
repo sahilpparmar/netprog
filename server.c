@@ -2,17 +2,28 @@
 #include "common.h"
 #include <time.h>
 
-static void *echo_server(void* arg) {
+typedef struct clientInfo_t {
+    char clientAddr[INET_ADDRSTRLEN];
+    int portNo;
     int connfd;
-    char echoBuf[MAXLINE+1];
-    int len;
+} ClientInfo_t;
 
-    // Get connection socket fd
-    connfd = *((int *) arg);
-    free(arg);
+static void emitErrMsgAndExitServer(char *msg) {
+    fprintf(stderr, "Server termination: %s\n", msg);
+    exit(EXIT_FAILURE);
+}
+
+static void *echo_server(void* arg) {
+    ClientInfo_t *clientInfo;
+    char echoBuf[MAXLINE+1];
+    int connfd, len;
 
     // Make this thread detachable
     Pthread_detach(pthread_self());
+
+    // Get connection socket fd
+    clientInfo = (ClientInfo_t *) arg;
+    connfd = clientInfo->connfd;
 
 retry:
     while ((len = Readline(connfd, echoBuf, MAXLINE)) > 0) {
@@ -20,48 +31,50 @@ retry:
     }
     if (len < 0 && errno == EINTR) {
         goto retry;
-    } else if (len < 0) {
-        printf("Echo Client termination: socket read returned with value -1");
-        printf(" and errno = %s\n", strerror(errno));
     } else {
-        printf("Echo Client termination: socket read returned with value 0\n");
+        printf("Echo Client (%s : %d) termination: socket read returned with value %d",
+                clientInfo->clientAddr, clientInfo->portNo, len);
+        if (len < 0) {
+            printf(" and errno = %s", strerror(errno));
+        }
+        printf("\n");
     }
 
+    free(clientInfo);
     Close(connfd);
     return NULL;
 }
 
 static void *time_server(void* arg) {
-    int connfd, n, maxfd;
+    ClientInfo_t *clientInfo;
     fd_set readfds;
     struct timeval timeout;
     time_t ticks;
     char strbuf[MAXLINE];
-    int len;
-
-    // Get connection socket fd
-    connfd = *((int *) arg);
-    free(arg);
+    int connfd, n, maxfd, len;
 
     // Make this thread detachable
     Pthread_detach(pthread_self());
 
+    // Get connection socket fd
+    clientInfo = (ClientInfo_t *) arg;
+    connfd = clientInfo->connfd;
+
     maxfd = connfd + 1;
     FD_ZERO(&readfds);
+    timeout.tv_sec = timeout.tv_usec = 0;
     while (1) {
         FD_SET(connfd, &readfds);
-        timeout.tv_sec = 5;
-        timeout.tv_usec = 0;
-
         if ((n = select(maxfd, &readfds, NULL, NULL, &timeout)) < 0) {
-            err_sys("Server termination: select error on connection socket");
+            emitErrMsgAndExitServer("select error on connection socket");
         }
 
         if (n != 0) {
+            printf("Time Client (%s : %d) terminated ", clientInfo->clientAddr, clientInfo->portNo);
             if (errno != 0) {
-                printf("Time Client terminated by errno = %s\n", strerror(errno));
+                printf("by errno = %s\n", strerror(errno));
             } else {
-                printf("Time Client terminated Successfully\n");
+                printf("successfully\n");
             }
             break;
         }
@@ -72,10 +85,12 @@ static void *time_server(void* arg) {
         len = strlen(strbuf);
 
         if (write(connfd, strbuf, len) != len) {
-            err_sys("Server termination: socket write error");
+            emitErrMsgAndExitServer("socket write error");
         }
+        timeout.tv_sec = 5;
     }
 
+    free(clientInfo);
     Close(connfd);
     return NULL;
 }
@@ -87,7 +102,7 @@ static int bind_and_listen(int portNo) {
     struct sockaddr_in servAddr;
 
     if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        err_sys("Server termination: server socket error");
+        emitErrMsgAndExitServer("server socket error");
     }
 
     bzero(&servAddr, sizeof(servAddr));
@@ -98,22 +113,22 @@ static int bind_and_listen(int portNo) {
     // Set socket option -> SO_REUSEADDR
     optVal = 1;
     if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optVal, sizeof(optVal)) < 0) {
-        err_sys("Server termination: setsockopt error");
+        emitErrMsgAndExitServer("setsockopt error");
     }
 
     if (bind(listenfd, (SA *) &servAddr, sizeof(servAddr)) < 0) {
-        err_sys("Server termination: server listen socket bind error");
+        emitErrMsgAndExitServer("server listen socket bind error");
     }
 
     // Make listening socket to be non-blocking
     if (socketFlags = fcntl(listenfd, F_GETFL, 0) == -1)  {
-        err_sys("Server termination: fcntl fail to get socket options");
+        emitErrMsgAndExitServer("fcntl fail to get socket options");
     }
     if (fcntl(listenfd, F_SETFL, socketFlags | O_NONBLOCK) == -1)  {
-        err_sys("Server termination: fcntl fail to set O_NONBLOCK socket option");
+        emitErrMsgAndExitServer("fcntl fail to set O_NONBLOCK socket option");
     }
     if (listen(listenfd, LISTENQ) < 0) {
-        err_sys("Server termination: sever socket listen error");
+        emitErrMsgAndExitServer("sever socket listen error");
     }
 
     return listenfd;
@@ -121,25 +136,31 @@ static int bind_and_listen(int portNo) {
 
 static void spawn_child_service(int listenfd, void * (*pthread_func)(void *)) {
     struct sockaddr_in cliAddr;
-    char strbuf[MAXLINE];
+    ClientInfo_t *clientInfo;
+    char strbuf[INET_ADDRSTRLEN];
     pthread_t tid;
     socklen_t len;
-    int *connfd;
+    int connfd;
 
     len = sizeof(cliAddr);
-    connfd = (int *) malloc(sizeof(int));
+    connfd = Accept(listenfd, (SA *) &cliAddr, &len);
 
-    *connfd = Accept(listenfd, (SA *) &cliAddr, &len);
     // Reset socket options to blocking
-    if (fcntl(*connfd, F_SETFL, socketFlags) == -1)  {
-        err_sys("Server termination: fcntl fail to reset socket options");
+    if (fcntl(connfd, F_SETFL, socketFlags) == -1)  {
+        emitErrMsgAndExitServer("fcntl fail to reset socket options");
     }
+ 
+    // Get client information which needs to be passed to pthread
+    clientInfo = (ClientInfo_t *) Malloc(sizeof(ClientInfo_t));
+    Inet_ntop(AF_INET, &cliAddr.sin_addr, strbuf, sizeof(strbuf));
+    strcpy(clientInfo->clientAddr, strbuf);
+    clientInfo->portNo = ntohs(cliAddr.sin_port);
+    clientInfo->connfd = connfd;
 
-    printf("New Connection from %s, port %d\n",
-            Inet_ntop(AF_INET, &cliAddr.sin_addr, strbuf, sizeof(strbuf)),
-            ntohs(cliAddr.sin_port));
-    // Spawn a new thread 
-    Pthread_create(&tid, NULL, pthread_func, connfd);
+    printf("New Connection from %s, port %d\n", clientInfo->clientAddr, clientInfo->portNo);
+
+    // Spawn a new pthread with client information
+    Pthread_create(&tid, NULL, pthread_func, (void *) clientInfo);
 }
 
 int main() {
@@ -157,7 +178,7 @@ int main() {
         FD_SET(listenfd_time, &readfds);
 
         if (select(maxfd, &readfds, NULL, NULL, NULL) < 0) {
-            err_sys("Server termination: select error on echo and time listen sockets");
+            emitErrMsgAndExitServer("select error on echo and time listen sockets");
         }
 
         if (FD_ISSET(listenfd_echo, &readfds)) {

@@ -1,36 +1,40 @@
 #include "unp.h"
 
-void sig_child(int signo) {
+static void sig_child(int signo) {
     wait(NULL);
     return;
 }
 
+static struct hostent* getHostInfoByNameOrAddr(char *host, char *hostAddr) {
+    struct hostent *hostInfo = NULL;
+    struct in_addr ipInfo;
+
+    if (inet_pton(AF_INET, host, &ipInfo) > 0) {
+        hostInfo = gethostbyaddr(&ipInfo, sizeof(ipInfo), AF_INET);
+    } else {
+        hostInfo = gethostbyname(host);
+    }
+    if (hostInfo != NULL) {
+        if (inet_ntop(AF_INET, hostInfo->h_addr, hostAddr, INET_ADDRSTRLEN) > 0) {
+            return hostInfo;
+       }
+    }
+    // No valid hostname/ipaddress found
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     struct hostent *hostInfo;
-    char hostAddr[INET_ADDRSTRLEN];
+    char hostAddr[INET_ADDRSTRLEN] = "";
 
     if (argc != 2) {
         err_quit("usage: \"client <IPAddress/HostName>\"");
     }
 
-    //TODO: Properly verify server hostname/hostaddr user option
-    if (isdigit(argv[1][0])) {
-        struct in_addr ipInfo;
-        if (inet_pton(AF_INET, argv[1], &ipInfo) <= 0) {
-            err_quit("inet_pton error for %s", argv[1]);
-        }
-        if ((hostInfo = gethostbyaddr(&ipInfo, sizeof(ipInfo), AF_INET)) == NULL) {
-            err_quit("invalid server host address - %s", argv[1]);
-        }
-        strcpy(hostAddr, argv[1]);
-    } else {
-        if ((hostInfo = gethostbyname(argv[1])) == NULL) {
-            err_quit("invalid server host name - %s", argv[1]);
-        }
-        if (inet_ntop(AF_INET, hostInfo->h_addr, hostAddr, INET_ADDRSTRLEN) <= 0) {
-            err_quit("inet_ntop error for %s", argv[1]);
-        }
+    if ((hostInfo = getHostInfoByNameOrAddr(argv[1], hostAddr)) == NULL) {
+        err_quit("Invalid Server HostName/IPAddress - %s", argv[1]);
     }
+
     // Valid hostName/hostAddr found
     printf("The server host is -> %s (%s)\n", hostInfo->h_name, hostAddr);
 
@@ -49,19 +53,18 @@ int main(int argc, char **argv) {
             printf("Enter your option: ");
 
             if (scanf("%d", &serviceOption) != 1) {
-                err_quit("\nInvalid input!");
-            }
-            if (serviceOption < 1 || serviceOption > 3) {
-                err_msg("\nInvalid option!");
-            } else {
-                // Correct option entered
+                // invalid option
+                char dummyBuf[MAXLINE];
+                Fgets(dummyBuf, MAXLINE, stdin);
+            } else if (serviceOption == 1 || serviceOption == 2) {
+                // echo/time service requested
                 break;
+            } else if (serviceOption == 3) {
+                // client exit
+                printf("\nThank you!\n");
+                return 0;
             }
-        }
-
-        if (serviceOption == 3) {
-            printf("\nThank you!\n");
-            return 0;
+            err_msg("\nInvalid option!");
         }
 
         if (pipe(pipefd) == -1) {
@@ -113,7 +116,7 @@ int main(int argc, char **argv) {
                 }
                 if (FD_ISSET(pipefd[0], &readfds)) {
                     if ((len = read(pipefd[0], recvBuf, MAXLINE)) > 0) {
-                        recvBuf[len] = 0;       /* null terminate */
+                        recvBuf[len] = '\0';
                         if (fputs(recvBuf, stdout) == EOF) {
                             err_sys("fputs stdout error");
                         }
