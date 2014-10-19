@@ -1,0 +1,9 @@
+*.o
+*.log
+*.a
+unpv13e/cscope.files
+unpv13e/ioctl/lsif01
+unpv13e/ioctl/lsif02
+unpv13e/ioctl/prifinfo
+unpv13e/ioctl/prifinfo_plus
+unpv13e/ioctl/prmac

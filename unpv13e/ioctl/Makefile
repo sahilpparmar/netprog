@@ -1,6 +1,6 @@
 include ../Make.defines
 
-PROGS =	lsif01 lsif02 prifinfo prmac
+PROGS =	lsif01 lsif02 prifinfo prifinfo_plus prmac prifi
 
 all:	${PROGS}
 
@@ -13,11 +13,17 @@ lsif02:	lsif02.o
 prifinfo:	prifinfo.o
 		${CC} ${CFLAGS} -o $@ prifinfo.o ${LIBS}
 
+prifinfo_plus:	prifinfo_plus.o
+		${CC} ${CFLAGS} -o $@ prifinfo.o ${LIBS}
+
 prmac:	prmac.o
+
 		${CC} ${CFLAGS} -o $@ prmac.o ${LIBS}
 
 test1:	test1.o
 		${CC} ${CFLAGS} -o $@ test1.o ${LIBS}
+
+
 
 clean:
 		rm -f ${PROGS} ${CLEANFILES}
