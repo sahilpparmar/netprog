@@ -3,5 +3,4 @@
 
 char* getParam(FILE *fp, char *ptr, int n);
 
-
 #endif /* !_COMMON_H */

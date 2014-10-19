@@ -27,5 +27,5 @@ common.o: common.c
 	${CC} ${CFLAGS} -c common.c
 
 clean:
-	rm -f server server.o client client.o readline.o
+	rm -f server client *.o
 

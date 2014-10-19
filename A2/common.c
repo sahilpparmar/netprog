@@ -6,7 +6,7 @@
 #include "unp.h"
 
 char* getParam(FILE *fp, char *ptr, int n) {
-    char line[MAXLINE], dummy[MAXLINE];
+    char line[MAXLINE];
 
     if (fgets(line, n, fp) == NULL || strlen(line) == 0) {
         return NULL;
@@ -16,3 +16,4 @@ char* getParam(FILE *fp, char *ptr, int n) {
         return ptr;
     return NULL;
 }
+
