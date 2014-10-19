@@ -14,7 +14,7 @@ prifinfo:	prifinfo.o
 		${CC} ${CFLAGS} -o $@ prifinfo.o ${LIBS}
 
 prifinfo_plus:	prifinfo_plus.o
-		${CC} ${CFLAGS} -o $@ prifinfo.o ${LIBS}
+		${CC} ${CFLAGS} -o $@ prifinfo_plus.o ${LIBS}
 
 prmac:	prmac.o
 
