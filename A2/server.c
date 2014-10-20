@@ -48,30 +48,22 @@ int initialize_params()
     if (inp_file == NULL) {
         err_quit("Unknown server argument file : '%s'\n", SERVER_IN);
     }
+    char data[MAXLINE];
+    getParam(inp_file, data, MAXLINE);
+    PORT_NO = atoi(data);
+    getParam(inp_file, data, MAXLINE);
+    WINDOW_SIZE = atoi(data);
 
-
-    char line[READ_BUFF];
-    if(fgets(line, sizeof line, inp_file) != NULL) /* read a Port number*/
-    {
-        if(atoi(line) == 0)
-        {
-            printf("Port number not set correctly\n");
-            exit(0);
-        }
-        printf("Port number read: %d\n", atoi(line));
-        PORT_NO = atoi(line);
-    }
-    
-    if(fgets(line, sizeof line, inp_file) != NULL) /* read a Port number*/
-    {
-        if(atoi(line) == 0)
-        {
-            printf("Window size not set correctly\n");
-            exit(0);
-        }
-        printf("Window Size read: %d\n", atoi(line));
-        WINDOW_SIZE = atoi(line);
-    }
+    //if((PORT_NO = atoi(getParam(inp_file, data, MAXLINE))) == 0)
+    //{
+    //    printf("Port number not set correctly\n");
+    //    exit(0);
+    //}
+    //if((WINDOW_SIZE = atoi(getParam(inp_file, data, MAXLINE))) == 0)
+    //{
+    //    printf("Window Size not set correctly\n");
+    //    exit(0);
+    //}
     Fclose(inp_file);
     
 }
@@ -88,11 +80,7 @@ int get_all_interfaces()
     doaliases = 1; // 1 or 0
 
     // Iterate over get_ifi_info_plus and count the total number of IP addresses
-    int totalIP = 0;
-    for (ifihead = ifi = get_ifi_info_plus(family, doaliases);
-             ifi != NULL; ifi = ifi->ifi_next) {
-        totalIP++;
-    }
+    int totalIP = print_ifi_info_plus(get_ifi_info_plus(family, doaliases));
     printf("Total number of IP addresses: %d\n", totalIP);
 
     int *sockfd;
@@ -103,45 +91,6 @@ int get_all_interfaces()
 
     for (ifihead = ifi = get_ifi_info_plus(family, doaliases);
              ifi != NULL; ifi = ifi->ifi_next) {
-                printf("%s: ", ifi->ifi_name);
-                if (ifi->ifi_index != 0)
-                        printf("(%d) ", ifi->ifi_index);
-                printf("<");
-/* *INDENT-OFF* */
-                if (ifi->ifi_flags & IFF_UP)                    printf("UP ");
-                if (ifi->ifi_flags & IFF_BROADCAST)             printf("BCAST ");
-                if (ifi->ifi_flags & IFF_MULTICAST)             printf("MCAST ");
-                if (ifi->ifi_flags & IFF_LOOPBACK)              printf("LOOP ");
-                if (ifi->ifi_flags & IFF_POINTOPOINT)   printf("P2P ");
-                printf(">\n");
-/* *INDENT-ON* */
-
-                if ( (i = ifi->ifi_hlen) > 0) {
-                        ptr = ifi->ifi_haddr;
-                        do {
-                                printf("%s%x", (i == ifi->ifi_hlen) ? "  " : ":", *ptr++);
-                        } while (--i > 0);
-                        printf("\n");
-                }
-                if (ifi->ifi_mtu != 0)
-                        printf("  MTU: %d\n", ifi->ifi_mtu);
-
-                if ( (sa = ifi->ifi_addr) != NULL)
-                        printf("  IP addr: %s\n",
-                                                Sock_ntop_host(sa, sizeof(*sa)));
-
-/*=================== cse 533 Assignment 2 modifications ======================*/
-
-                if ( (sa = ifi->ifi_ntmaddr) != NULL)
-                        printf("  network mask: %s\n",
-                                                Sock_ntop_host(sa, sizeof(*sa)));
-
-                if ( (sa = ifi->ifi_brdaddr) != NULL)
-                        printf("  broadcast addr: %s\n",
-                                                Sock_ntop_host(sa, sizeof(*sa)));
-                if ( (sa = ifi->ifi_dstaddr) != NULL)
-                        printf("  destination addr: %s\n",
-                                                Sock_ntop_host(sa, sizeof(*sa)));
 
                 sockfd[counter] = Socket(AF_INET, SOCK_DGRAM, 0);
                 bzero(&servaddr, sizeof(servaddr));
