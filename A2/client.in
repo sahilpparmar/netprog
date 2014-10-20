@@ -1,14 +1,7 @@
-127.0.0.1
-5445
-test.txt
-10
-4
-0.04
-20
-// Server IP 172.24.31.22
-// Server PortNo
-// FileName to be transfered
-// Size of receiving sliding window
-// Random Gen Seed Value
-// Probability of packet loss
-// mean millisec at which client reads data from receving window
+172.24.31.22 // Server IP 172.24.31.22
+5445      // Server PortNo
+test.txt  // FileName to be transfered
+10        // Size of receiving sliding window
+4         // Random Gen Seed Value
+0.04      // Probability of packet loss
+20        // mean millisec at which client reads data from receving window
