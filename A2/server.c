@@ -104,7 +104,7 @@ int get_all_interfaces()
         fd_set rset;
         FD_ZERO(&rset);
         int maxfd = sockfd[--counter] + 1;
-        char mesg[MAXLINE];
+        char message[MAXLINE];
         int n = 0;
 
         while(1)
@@ -122,9 +122,12 @@ int get_all_interfaces()
                 {
                     struct sockaddr_in cliaddr;
                     socklen_t len = sizeof(cliaddr);
-                    n = Recvfrom(sockfd[i], mesg, MAXLINE, 0, (SA *)&cliaddr, &len);
+                    n = Recvfrom(sockfd[i], message, MAXLINE, 0, (SA *)&cliaddr, &len);
                     // Read and print the child IP address
 //                    printf("Connection request from %s \n", Sock_ntop((SA *)&cliaddr, len));
+                    message[n] = '\0';
+                    printf("\nNew Incoming Client Connection!\n");
+                    printf("FileName: %s \n",message);
                     int ret = search_add_client_request(cliaddr, sockfd, i, totalIP);
                     if (ret > 0)
                         break;
@@ -133,7 +136,6 @@ int get_all_interfaces()
                         printf("Error detected!\n");
                         break;
                     }
-//                    printf("Data Read: %s \n",mesg);
 
                     // Fork a child and pass IP address
                     
@@ -186,7 +188,7 @@ int search_add_client_request(struct sockaddr_in cliaddr, int *sock_fd, int req_
         for (i = 0; i < total_IP; i++ ) 
         {
             if (i != req_sock)
-                close(sock_fd[i]);
+                Close(sock_fd[i]);
         }
 
         //printf("This is the Child process\n");
@@ -194,17 +196,36 @@ int search_add_client_request(struct sockaddr_in cliaddr, int *sock_fd, int req_
 
         //------------------ Second Handshake ------------------------
         // create a new socked and connect with the client and bind to it
-/*        int child_socfd;
+        int len, connFd, newChildPortNo;
         struct sockaddr_in child_cliaddr, child_servaddr;
-           if (getsockname(sock_fd[req_sock],(SA *) &child_servaddr, sizeof(struct sockaddr)) == -1) {
-                     perror("getsockname() failed");
-                           return -1;
-            }
-            printf("Server IP address is: %s\n", inet_ntoa(child_servaddr.sin_addr));
-            printf("Local port is: %d\n\n", (int) ntohs(child_servaddr.sin_port));
 
+        len = sizeof(struct sockaddr_in);
+        Getsockname(sock_fd[req_sock],(SA *) &child_servaddr, &len);
+
+        printf("Server IP address is: %s\n", inet_ntoa(child_servaddr.sin_addr));
+        printf("Local port is: %d\n", (int) ntohs(child_servaddr.sin_port));
+
+        // Create a new connection socket
+        connFd = Socket(AF_INET, SOCK_DGRAM, 0);
+
+        child_servaddr.sin_port = 0; // Choose a new port number
+        Bind(connFd, (SA *)&child_servaddr, sizeof(child_servaddr));
+
+        Getsockname(connFd,(SA *) &child_servaddr, &len);
+        newChildPortNo = ntohs(child_servaddr.sin_port);
+        printf("New Conn Port No : %d\n", newChildPortNo); 
+        Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
+
+        char message[MAXLINE];
+        sprintf(message, "%d", newChildPortNo);
+        Sendto(sock_fd[req_sock], message, strlen(message), 0, (SA *) &cliaddr, sizeof(cliaddr));
+
+        Close(sock_fd[req_sock]);
+        
         //After third acknowledgement
-*/
+        len = Read(connFd, message, MAXLINE);
+        message[len] = '\0';
+        printf("Third ACK : %s\n", message);
         exit(0);
         //close(sock_fd[req_sock]);
     }

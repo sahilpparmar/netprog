@@ -8,7 +8,7 @@
 #define IFI_ADDR(ifi) (((struct sockaddr_in*)ifi->ifi_addr)->sin_addr.s_addr)
 #define IFI_MASK(ifi) (((struct sockaddr_in*)ifi->ifi_ntmaddr)->sin_addr.s_addr)
 
-enum client_params_t {
+enum ClientParams {
     SERVER_IP,      // Server IP
     SERVER_PORT,    // Server PortNo
     FILE_NAME,      // FileName to be transfered
@@ -77,7 +77,7 @@ static int getClientIP(struct in_addr *server_ip, struct in_addr *client_ip) {
     return isLocal;
 }
 
-static int bind_and_connect(struct sockaddr_in servAddr, struct in_addr client_ip) {
+static int bindAndConnect(struct sockaddr_in servAddr, struct in_addr client_ip) {
     struct sockaddr_in cliAddr;
     int sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
     char buf[INET_ADDRSTRLEN];
@@ -109,12 +109,25 @@ static int bind_and_connect(struct sockaddr_in servAddr, struct in_addr client_i
     return sockfd;
 }
 
-int handshake(int sockfd, SA* servAddr, int salen, int flags) {
+int handshake(int sockfd, struct sockaddr_in servAddr, char *fileName, int flags) {
     char message[MAXLINE];
+    int newPortNo, n;
     
     // 1st HS
-    Sendto(sockfd, message, strlen(message), flags, servAddr, salen);
+    strcpy(message, fileName);
+    Writen(sockfd, message, strlen(message));
 
+    // 2nd HS
+    n = Read(sockfd, message, MAXLINE);
+    message[n] = '\0';
+    printf("New Port No : %s\n", message);
+    newPortNo = atoi(message);
+
+    // 3rd HS
+    servAddr.sin_port = htons(newPortNo);
+    Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
+    strcpy(message, "Done");
+    Writen(sockfd, message, strlen(message));
 }
 
 int main() {
@@ -156,10 +169,10 @@ int main() {
 
     //printf("Server found on Local Interface: ");
     //printf("Server Not found on Local Interface: ");
-    sockfd = bind_and_connect(servAddr, client_ip);
+    sockfd = bindAndConnect(servAddr, client_ip);
 
     // 3 way Handshake
-    handshake(sockfd, (SA *) &servAddr, sizeof(servAddr), isLocal ? MSG_DONTROUTE : 0);
+    handshake(sockfd, servAddr, inp_params[FILE_NAME], isLocal ? MSG_DONTROUTE : 0);
 
     return 0;
 }
