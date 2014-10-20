@@ -15,3 +15,9 @@ struct CONFIG{
     int PORT_NO;
     int WINDOW_SIZE;
 };
+
+struct client_request{
+  struct sockaddr_in cliaddr;
+  int childpid;
+  struct client_request *next;
+};
