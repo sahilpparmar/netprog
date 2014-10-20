@@ -42,10 +42,9 @@ static int verifyIfLocal(struct ifi_info *new_client_ifi,
     return 0;
 }
 
-static struct in_addr getClientIP(struct in_addr *server_ip) {
+static int getClientIP(struct in_addr *server_ip, struct in_addr *client_ip) {
     struct ifi_info *ifi, *ifihead, *local_ifi, *arbitrary_ifi;
-    struct in_addr client_ip;
-    char buf[INET_ADDRSTRLEN];
+    int isLocal;
 
     ifihead = Get_ifi_info_plus(AF_INET, 1);
 
@@ -61,18 +60,61 @@ static struct in_addr getClientIP(struct in_addr *server_ip) {
             arbitrary_ifi = ifi;
         }
     }
+
+    isLocal = 0;
     if (local_ifi) {
-        client_ip.s_addr = IFI_ADDR(local_ifi);
-        printf("\nClient found on Local Interface: ");
+        client_ip->s_addr = IFI_ADDR(local_ifi);
+        if (!(local_ifi->ifi_flags & IFF_LOOPBACK))
+            isLocal = 1;
     } else if (arbitrary_ifi) {
-        client_ip.s_addr = IFI_ADDR(arbitrary_ifi);
-        printf("\nClient Not found on Local Interface: ");
+        client_ip->s_addr = IFI_ADDR(arbitrary_ifi);
+    } else {
+        isLocal = -1;
     }
 
     free_ifi_info_plus(ifihead);
 
-    printf("IP => %s\n", inet_ntop(AF_INET, &client_ip, buf, INET_ADDRSTRLEN));
-    return client_ip;
+    return isLocal;
+}
+
+static int bind_and_connect(struct sockaddr_in servAddr, struct in_addr client_ip) {
+    struct sockaddr_in cliAddr;
+    int sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
+    char buf[INET_ADDRSTRLEN];
+    int len;
+
+    bzero(&cliAddr, sizeof(cliAddr));
+    cliAddr.sin_family = AF_INET;
+    cliAddr.sin_addr = client_ip;
+    cliAddr.sin_port = 0;
+    
+    Bind(sockfd, (SA *)&cliAddr, sizeof(cliAddr));
+
+    len = sizeof(cliAddr);
+    Getsockname(sockfd, (SA *)&cliAddr, &len);
+
+    printf("\nClient IP => %s, Port => %d",
+            inet_ntop(AF_INET, &cliAddr.sin_addr, buf, INET_ADDRSTRLEN),
+            ntohs(cliAddr.sin_port));
+
+    Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
+
+    len = sizeof(servAddr);
+    Getpeername(sockfd, (SA *)&servAddr, &len);
+
+    printf("\nServer IP => %s, Port => %d\n",
+            inet_ntop(AF_INET, &servAddr.sin_addr, buf, INET_ADDRSTRLEN),
+            ntohs(servAddr.sin_port));
+
+    return sockfd;
+}
+
+int handshake(int sockfd, SA* servAddr, int salen, int flags) {
+    char message[MAXLINE];
+    
+    // 1st HS
+    Sendto(sockfd, message, strlen(message), flags, servAddr, salen);
+
 }
 
 int main() {
@@ -80,6 +122,8 @@ int main() {
     char inp_params[MAX_PARAMS][PARAM_SIZE];
     struct hostent *hostInfo;
     struct in_addr client_ip;
+    struct sockaddr_in servAddr;
+    int sockfd, isLocal;
 
     // Read input parameters
     if (inp_file != NULL) {
@@ -101,7 +145,21 @@ int main() {
 
     printf("The server host is -> %s (%s)\n", hostInfo->h_name, inp_params[SERVER_IP]);
 
-    client_ip = getClientIP((struct in_addr*) hostInfo->h_addr);
+    if ((isLocal = getClientIP((struct in_addr*) hostInfo->h_addr, &client_ip)) == -1) {
+        err_quit("No interface found!\n");
+    }
+
+    bzero(&servAddr, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr = *(struct in_addr*) hostInfo->h_addr;
+    servAddr.sin_port = htons(atoi(inp_params[SERVER_PORT]));
+
+    //printf("Server found on Local Interface: ");
+    //printf("Server Not found on Local Interface: ");
+    sockfd = bind_and_connect(servAddr, client_ip);
+
+    // 3 way Handshake
+    handshake(sockfd, (SA *) &servAddr, sizeof(servAddr), isLocal ? MSG_DONTROUTE : 0);
 
     return 0;
 }
