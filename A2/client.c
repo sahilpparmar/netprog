@@ -5,6 +5,9 @@
 #define CLIENT_IN   "client.in"
 #define PARAM_SIZE  100
 
+#define IFI_ADDR(ifi) (((struct sockaddr_in*)ifi->ifi_addr)->sin_addr.s_addr)
+#define IFI_MASK(ifi) (((struct sockaddr_in*)ifi->ifi_ntmaddr)->sin_addr.s_addr)
+
 enum client_params_t {
     SERVER_IP,      // Server IP
     SERVER_PORT,    // Server PortNo
@@ -26,17 +29,53 @@ static struct hostent* getHostInfoByAddr(char *hostip) {
     return hostInfo;
 }
 
-static int verifyIfLocal(struct in_addr *client_ip, struct in_addr *mask, struct in_addr *server_ip) {
-    if ((client_ip->s_addr & mask->s_addr) == (server_ip->s_addr & mask->s_addr))
-        return 1;
+static int verifyIfLocal(struct ifi_info *new_client_ifi,
+                         struct ifi_info *client_ifi,
+                         struct in_addr *server_ip)
+{
+    in_addr_t new_mask = IFI_MASK(new_client_ifi);
+
+    if ((IFI_ADDR(new_client_ifi) & new_mask) == (server_ip->s_addr & new_mask)) {
+        if (client_ifi == NULL || (IFI_MASK(client_ifi) < new_mask))
+            return 1;
+    }
     return 0;
 }
 
+static struct in_addr getClientIP(struct in_addr *server_ip) {
+    struct ifi_info *ifi, *ifihead, *local_ifi, *arbitrary_ifi;
+    struct in_addr client_ip;
+    char buf[INET_ADDRSTRLEN];
+
+    ifihead = Get_ifi_info_plus(AF_INET, 1);
+
+    printf("\nFollowing are different Interfaces:\n");
+    print_ifi_info_plus(ifihead);
+
+    local_ifi = arbitrary_ifi = NULL;
+    for (ifi = ifihead ; ifi != NULL; ifi = ifi->ifi_next) {
+        if (verifyIfLocal(ifi, local_ifi, server_ip)) {
+            local_ifi = ifi;
+        }
+        if (!(ifi->ifi_flags & IFF_LOOPBACK)) {
+            arbitrary_ifi = ifi;
+        }
+    }
+    if (local_ifi || arbitrary_ifi) {
+        client_ip.s_addr = local_ifi ? IFI_ADDR(local_ifi) : IFI_ADDR(arbitrary_ifi);
+    }
+
+    free_ifi_info_plus(ifihead);
+
+    printf("\nClient IP : %s\n", inet_ntop(AF_INET, &client_ip, buf, INET_ADDRSTRLEN));
+    return client_ip;
+}
 
 int main() {
     FILE *inp_file = fopen(CLIENT_IN, "r");
     char inp_params[MAX_PARAMS][PARAM_SIZE];
     struct hostent *hostInfo;
+    struct in_addr client_ip;
 
     // Read input parameters
     if (inp_file != NULL) {
@@ -58,69 +97,8 @@ int main() {
 
     printf("The server host is -> %s (%s)\n", hostInfo->h_name, inp_params[SERVER_IP]);
 
-    // Verfiy if server ip is in local network
-    {
-        struct ifi_info *ifi, *ifihead;
-        struct sockaddr *sa;
-	u_char          *ptr;
-        int             i;
+    client_ip = getClientIP((struct in_addr*) hostInfo->h_addr);
 
-        printf("Different IP Addresses:\n");
-        for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
-                ifi != NULL; ifi = ifi->ifi_next) 
-        {
-            printf("  %s: ", ifi->ifi_name);
-            if (ifi->ifi_index != 0)
-                printf("(%d) ", ifi->ifi_index);
-            printf("< ");
-            /* *INDENT-OFF* */
-            if (ifi->ifi_flags & IFF_UP)            printf("UP ");
-            if (ifi->ifi_flags & IFF_BROADCAST)     printf("BCAST ");
-            if (ifi->ifi_flags & IFF_MULTICAST)     printf("MCAST ");
-            if (ifi->ifi_flags & IFF_LOOPBACK)      printf("LOOP ");
-            if (ifi->ifi_flags & IFF_POINTOPOINT)   printf("P2P ");
-            printf(">\n");
-            /* *INDENT-ON* */
-
-            if ( (i = ifi->ifi_hlen) > 0) {
-                ptr = ifi->ifi_haddr;
-                do {
-                    printf("%s%x", (i == ifi->ifi_hlen) ? "  " : ":", *ptr++);
-                } while (--i > 0);
-                printf("\n");
-            }
-            if (ifi->ifi_mtu != 0)
-                printf("    MTU: %d\n", ifi->ifi_mtu);
-
-            if ( (sa = ifi->ifi_addr) != NULL)
-                printf("    IP addr: %s\n",
-                        Sock_ntop_host(sa, sizeof(*sa)));
-
-            /*=================== cse 533 Assignment 2 modifications ======================*/
-
-            if ((sa = ifi->ifi_ntmaddr) != NULL)
-                printf("    network mask: %s\n",
-                        Sock_ntop_host(sa, sizeof(*sa)));
-
-            /*=============================================================================*/
-
-            if ((sa = ifi->ifi_brdaddr) != NULL)
-                printf("    broadcast addr: %s\n",
-                        Sock_ntop_host(sa, sizeof(*sa)));
-            if ((sa = ifi->ifi_dstaddr) != NULL)
-                printf("    destination addr: %s\n",
-                        Sock_ntop_host(sa, sizeof(*sa)));
-
-            if (verifyIfLocal(&((struct sockaddr_in*)ifi->ifi_addr)->sin_addr,
-                          &((struct sockaddr_in*)ifi->ifi_ntmaddr)->sin_addr,
-                          (struct in_addr*)hostInfo->h_addr)
-            ) {
-                printf(" ----> isLOCAL");
-
-            }
-        }
-
-        free_ifi_info_plus(ifihead);
-    }
+    return 0;
 }
 
