@@ -61,13 +61,17 @@ static struct in_addr getClientIP(struct in_addr *server_ip) {
             arbitrary_ifi = ifi;
         }
     }
-    if (local_ifi || arbitrary_ifi) {
-        client_ip.s_addr = local_ifi ? IFI_ADDR(local_ifi) : IFI_ADDR(arbitrary_ifi);
+    if (local_ifi) {
+        client_ip.s_addr = IFI_ADDR(local_ifi);
+        printf("\nClient found on Local Interface: ");
+    } else if (arbitrary_ifi) {
+        client_ip.s_addr = IFI_ADDR(arbitrary_ifi);
+        printf("\nClient Not found on Local Interface: ");
     }
 
     free_ifi_info_plus(ifihead);
 
-    printf("\nClient IP : %s\n", inet_ntop(AF_INET, &client_ip, buf, INET_ADDRSTRLEN));
+    printf("IP => %s\n", inet_ntop(AF_INET, &client_ip, buf, INET_ADDRSTRLEN));
     return client_ip;
 }
 
