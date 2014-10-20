@@ -1,9 +1,40 @@
 #include "server.h"
 
 int PORT_NO, WINDOW_SIZE;
-struct client_request *Head = NULL; 
-int main() {
+struct client_request *Head = NULL;
 
+static void sig_child(int signo)  // Remove child entry from the linkedlist
+{
+    int pid = wait(NULL);
+    printf("Child with Pid : %d\n", pid);
+    struct client_request *node = Head;
+    struct client_request *prev = Head;
+
+    while(node != NULL)
+    {
+        if(node->childpid == pid)
+        {// remove this entry
+            if (Head == node)
+                Head = node->next;
+            else
+            {
+                prev = node->next;
+            }
+
+            free(node);
+            return;
+        }
+        prev = node;
+        node = node->next;
+    }
+
+    printf("ERROR!! Unable to find a record for child with pid:%d \n",pid);
+    return;
+}
+
+int main() 
+{
+   // Signal(SIGCHLD,sig_child); // UNCOMMENT LATER
     initialize_params();
     get_all_interfaces();
     exit(0);
@@ -114,8 +145,6 @@ int get_all_interfaces()
 
                 sockfd[counter] = Socket(AF_INET, SOCK_DGRAM, 0);
                 bzero(&servaddr, sizeof(servaddr));
-                //servaddr.sin_family = sa->sin_family;
-//servaddr.sin_addr.s_addr = sa->sin_port;
                 servaddr = *(struct sockaddr_in *)ifi->ifi_addr;
                 servaddr.sin_port = htons(PORT_NO);
                 Bind(sockfd[counter++], (SA *)&servaddr, sizeof(servaddr));
@@ -133,7 +162,6 @@ int get_all_interfaces()
         {
             for (i = 0 ; i < totalIP; i++)
                 FD_SET(sockfd[i], &rset);
-
            // printf("Listening for connections\n");
 
             select(maxfd, &rset, NULL, NULL, NULL);
@@ -146,17 +174,17 @@ int get_all_interfaces()
                     struct sockaddr_in cliaddr;
                     socklen_t len = sizeof(cliaddr);
                     n = Recvfrom(sockfd[i], mesg, MAXLINE, 0, (SA *)&cliaddr, &len);
-
                     // Read and print the child IP address
 //                    printf("Connection request from %s \n", Sock_ntop((SA *)&cliaddr, len));
-                    search_add_client_request(cliaddr);
+                    int ret = search_add_client_request(cliaddr, sockfd, i, totalIP);
+                    if (ret > 0)
+                        break;
+                    else if (ret <0)
+                    {
+                        printf("Error detected!\n");
+                        break;
+                    }
 //                    printf("Data Read: %s \n",mesg);
-                    // Maintain a structure that keeps track of requests coming from clients
-                    // Initialize the structure in the begining
-                    // Create two functions
-                    // Search and add =>
-                    // remove =>
-                    // structure has the client IP address, client port number and child Pid
 
                     // Fork a child and pass IP address
                     
@@ -167,13 +195,16 @@ int get_all_interfaces()
         } // end While
 }
 
-int search_add_client_request(struct sockaddr_in cliaddr)
+// Maintain a structure that keeps track of requests coming from clients
+// client_request structure maintains the client IP address, client port number 
+// for each request that it encounters. It also stores the Child Pid 
+// return Child processid for new Requests
+// return 0 for duplicate requests
+// return -1 for Error
+int search_add_client_request(struct sockaddr_in cliaddr, int *sock_fd, int req_sock, int total_IP)
 {
-    // return processid if not present
-    // return 0 if present
-    // return -1 in case there is an error
     struct client_request *node = Head;
-    while(node != NULL) // Check if header is present
+    while(node != NULL) // Check if it is a duplicate request
     {
         if(compare_address(&(node->cliaddr), &cliaddr) == 0)
         {
@@ -181,30 +212,74 @@ int search_add_client_request(struct sockaddr_in cliaddr)
         }
         node = node->next;
     }
-    // Create a node if head is not present
+    // Create a node if the entry is not present
     struct client_request *new_node = malloc(sizeof(struct client_request));
-
+    int pid;
     new_node->cliaddr = cliaddr;
     new_node->next = Head;
-    //new-> pid = fork(); // fork logic
-    Head = new_node;
-    printf("New Request Added!!\n");
-    //return new->pid;
-    return 10;
+    Head = new_node; // update head node
+
+    if ((pid = fork()) < 0)
+    {
+        perror("fork failed\n");
+        return(-1);
+    }
+    
+    if (pid == 0)// Child process
+    {
+        /* Child would close all the socket descriptor except one
+         * Next it would create a new socket and send a second handshake
+         * to the client with the new socket in the payload.
+         * It would also start a new timer for the second handshake 
+         */
+        int i;
+        // Close all the sockets except the one where request arrived
+        for (i = 0; i < total_IP; i++ ) 
+        {
+            if (i != req_sock)
+                close(sock_fd[i]);
+        }
+
+        //printf("This is the Child process\n");
+
+
+        //------------------ Second Handshake ------------------------
+        // create a new socked and connect with the client and bind to it
+/*        int child_socfd;
+        struct sockaddr_in child_cliaddr, child_servaddr;
+           if (getsockname(sock_fd[req_sock],(SA *) &child_servaddr, sizeof(struct sockaddr)) == -1) {
+                     perror("getsockname() failed");
+                           return -1;
+            }
+            printf("Server IP address is: %s\n", inet_ntoa(child_servaddr.sin_addr));
+            printf("Local port is: %d\n\n", (int) ntohs(child_servaddr.sin_port));
+
+        //After third acknowledgement
+*/
+        exit(0);
+        //close(sock_fd[req_sock]);
+    }
+    else // Parent process: It would simply store the processId and return the id
+    {
+        new_node->childpid = pid;
+        printf("New Request Added with child Id: %d\n", pid);
+        printf("New request from client: %s\n", Sock_ntop((SA *)&(new_node->cliaddr), sizeof(struct sockaddr_in)));
+        return pid;
+    }
 }
 
-int compare_address( struct sockaddr_in *prev_req, struct sockaddr_in *new_req)
+int compare_address(struct sockaddr_in *prev_req, struct sockaddr_in *new_req)
 {
-    if((prev_req->sin_addr.s_addr != new_req->sin_addr.s_addr) || 
-            (prev_req->sin_port != new_req->sin_port) || 
-            (prev_req->sin_family != new_req->sin_family))
+    if((prev_req->sin_addr.s_addr != new_req->sin_addr.s_addr) ||  // Check the IP Address
+            (prev_req->sin_port != new_req->sin_port) ||  // Check the Port Number
+            (prev_req->sin_family != new_req->sin_family)) // Check the Address family
     {
-        printf("New request from client: %s\n", Sock_ntop((SA *)&new_req, sizeof(struct sockaddr_in)));
-        return -1;
+        //printf("New request from client: %s\n", Sock_ntop((SA *)new_req, sizeof(struct sockaddr_in)));
+        return 1; // New Request
     }
     else
     {
 //        printf("Repeated request from client %s", Sock_ntop((SA *)&new_req, sizeof(struct sockaddr_in)));
-        return 0;
+        return 0; // Repeated Request
     }
 }
