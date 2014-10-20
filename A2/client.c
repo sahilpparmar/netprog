@@ -109,18 +109,20 @@ static int bindAndConnect(struct sockaddr_in servAddr, struct in_addr client_ip)
     return sockfd;
 }
 
-int handshake(int sockfd, struct sockaddr_in servAddr, char *fileName, int flags) {
+static int handshake(int sockfd, struct sockaddr_in servAddr, char *fileName, int flags) {
     char message[MAXLINE];
     int newPortNo, n;
     
     // 1st HS
     strcpy(message, fileName);
     Writen(sockfd, message, strlen(message));
+    printf("1st HS sent\n");
 
     // 2nd HS
     n = Read(sockfd, message, MAXLINE);
+    printf("2nd HS received");
     message[n] = '\0';
-    printf("New Port No : %s\n", message);
+    printf(" New Port No : %s\n", message);
     newPortNo = atoi(message);
 
     // 3rd HS
@@ -128,6 +130,7 @@ int handshake(int sockfd, struct sockaddr_in servAddr, char *fileName, int flags
     Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
     strcpy(message, "Done");
     Writen(sockfd, message, strlen(message));
+    printf("3rd HS sent\n");
 }
 
 int main() {
@@ -158,6 +161,7 @@ int main() {
 
     printf("The server host is -> %s (%s)\n", hostInfo->h_name, inp_params[SERVER_IP]);
 
+    // Get Client IP Address
     if ((isLocal = getClientIP((struct in_addr*) hostInfo->h_addr, &client_ip)) == -1) {
         err_quit("No interface found!\n");
     }
