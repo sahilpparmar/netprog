@@ -2,22 +2,35 @@
 #include "unpifiplus.h"
 #include "common.h"
 
-#define CLIENT_IN   "client.in"
-#define PARAM_SIZE  100
-
 #define IFI_ADDR(ifi) (((struct sockaddr_in*)ifi->ifi_addr)->sin_addr.s_addr)
 #define IFI_MASK(ifi) (((struct sockaddr_in*)ifi->ifi_ntmaddr)->sin_addr.s_addr)
 
-enum ClientParams {
-    SERVER_IP,      // Server IP
-    SERVER_PORT,    // Server PortNo
-    FILE_NAME,      // FileName to be transfered
-    RECEIVE_WIN,    // Size of receiving sliding window
-    RANDOM_SEED,    // Random Gen Seed Value
-    PACKET_LOSS,    // Probability of packet loss
-    READ_DELAY,     // mean millisec at which client reads data from receving window
-    MAX_PARAMS      // total number of params
-};
+static char  in_server_ip[PARAM_SIZE];     // Server IP
+static int   in_server_port;               // Server PortNo
+static char  in_file_name[PARAM_SIZE];     // FileName to be transfered
+static int   in_receive_win;               // Size of receiving sliding window
+static int   in_random_seed;               // Random Gen Seed Value
+static float in_packet_loss;               // Probability of packet loss
+static int   in_read_delay;                // mean millisec at which client reads data from receving window
+
+static void parseClientParams() {
+    FILE *inp_file = fopen(CLIENT_IN, "r");
+
+    // Read input parameters
+    if (inp_file != NULL) {
+        getStringParamValue(inp_file, in_server_ip);
+        in_server_port = getIntParamValue(inp_file);
+        getStringParamValue(inp_file, in_file_name);
+        in_receive_win = getIntParamValue(inp_file);
+        in_random_seed = getIntParamValue(inp_file);
+        in_packet_loss = getFloatParamValue(inp_file);
+        in_read_delay  = getIntParamValue(inp_file);
+
+        Fclose(inp_file);
+    } else {
+        err_quit("Unknown client argument file : '%s'", CLIENT_IN);
+    }
+}
 
 static struct hostent* getHostInfoByAddr(char *hostip) {
     struct hostent *hostInfo = NULL;
@@ -50,6 +63,7 @@ static int getClientIP(struct in_addr *server_ip, struct in_addr *client_ip) {
 
     printf("\nFollowing are different Interfaces:\n");
     print_ifi_info_plus(ifihead);
+    printf("\n");
 
     local_ifi = arbitrary_ifi = NULL;
     for (ifi = ifihead ; ifi != NULL; ifi = ifi->ifi_next) {
@@ -93,7 +107,7 @@ static int bindAndConnect(struct sockaddr_in servAddr, struct in_addr client_ip)
     len = sizeof(cliAddr);
     Getsockname(sockfd, (SA *)&cliAddr, &len);
 
-    printf("\nClient IP => %s, Port => %d",
+    printf("Client IP => %s, Port => %d\n",
             inet_ntop(AF_INET, &cliAddr.sin_addr, buf, INET_ADDRSTRLEN),
             ntohs(cliAddr.sin_port));
 
@@ -102,7 +116,7 @@ static int bindAndConnect(struct sockaddr_in servAddr, struct in_addr client_ip)
     len = sizeof(servAddr);
     Getpeername(sockfd, (SA *)&servAddr, &len);
 
-    printf("\nServer IP => %s, Port => %d\n",
+    printf("Server IP => %s, Port => %d\n\n",
             inet_ntop(AF_INET, &servAddr.sin_addr, buf, INET_ADDRSTRLEN),
             ntohs(servAddr.sin_port));
 
@@ -134,49 +148,38 @@ static int handshake(int sockfd, struct sockaddr_in servAddr, char *fileName, in
 }
 
 int main() {
-    FILE *inp_file = fopen(CLIENT_IN, "r");
-    char inp_params[MAX_PARAMS][PARAM_SIZE];
     struct hostent *hostInfo;
     struct in_addr client_ip;
     struct sockaddr_in servAddr;
     int sockfd, isLocal;
 
     // Read input parameters
-    if (inp_file != NULL) {
-        int i;
+    parseClientParams();
 
-        for (i = 0; i < MAX_PARAMS; i++) {
-            if (getParam(inp_file, inp_params[i], PARAM_SIZE) == NULL) {
-                err_quit("Invalid client argument file : '%s'", CLIENT_IN);
-            }
-        }
-        Fclose(inp_file);
-    } else {
-        err_quit("Unknown client argument file : '%s'", CLIENT_IN);
+    if ((hostInfo = getHostInfoByAddr(in_server_ip)) == NULL) {
+        err_quit("Invalid Server IPAddress - %s", in_server_ip);
     }
 
-    if ((hostInfo = getHostInfoByAddr(inp_params[SERVER_IP])) == NULL) {
-        err_quit("Invalid Server IPAddress - %s", inp_params[SERVER_IP]);
-    }
-
-    printf("The server host is -> %s (%s)\n", hostInfo->h_name, inp_params[SERVER_IP]);
+    printf("The server host is -> %s (%s)\n", hostInfo->h_name, in_server_ip);
 
     // Get Client IP Address
     if ((isLocal = getClientIP((struct in_addr*) hostInfo->h_addr, &client_ip)) == -1) {
         err_quit("No interface found!\n");
+    } else if (isLocal == 1) {
+        printf("Server found on Local Interface:\n");
+    } else {
+        printf("Server Not found on Local Interface:\n");
     }
 
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
     servAddr.sin_addr = *(struct in_addr*) hostInfo->h_addr;
-    servAddr.sin_port = htons(atoi(inp_params[SERVER_PORT]));
+    servAddr.sin_port = htons(in_server_port);
 
-    //printf("Server found on Local Interface: ");
-    //printf("Server Not found on Local Interface: ");
     sockfd = bindAndConnect(servAddr, client_ip);
 
     // 3 way Handshake
-    handshake(sockfd, servAddr, inp_params[FILE_NAME], isLocal ? MSG_DONTROUTE : 0);
+    handshake(sockfd, servAddr, in_file_name, isLocal ? MSG_DONTROUTE : 0);
 
     return 0;
 }

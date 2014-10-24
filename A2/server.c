@@ -2,16 +2,13 @@
 #include "unpifiplus.h"
 #include "common.h"
 
-#define SERVER_IN "server.in"
-#define READ_BUFF 1024
-
 typedef struct client_request {
     struct sockaddr_in cliaddr;
     pid_t childpid;
     struct client_request *next;
 } client_request;
 
-static int PORT_NO, WINDOW_SIZE;
+static int in_port_no, in_window_size;
 static client_request *Head = NULL;
 
 static void sig_child(int signo) { 
@@ -46,12 +43,8 @@ static int initializeParams() {
     if (inp_file == NULL) {
         err_quit("Unknown server argument file : '%s'\n", SERVER_IN);
     }
-    if ((PORT_NO = atoi(getParam(inp_file, data, MAXLINE))) == 0) {
-        err_quit("Port number not set correctly\n");
-    }
-    if ((WINDOW_SIZE = atoi(getParam(inp_file, data, MAXLINE))) == 0) {
-        err_quit("Window Size not set correctly\n");
-    }
+    in_port_no = getIntParamValue(inp_file);
+    in_window_size = getIntParamValue(inp_file);
     Fclose(inp_file);
 }
 
@@ -74,7 +67,7 @@ static int* getAllInterfaces(int *totalIP) {
         sockfd[counter] = Socket(AF_INET, SOCK_DGRAM, 0);
         bzero(&servaddr, sizeof(servaddr));
         servaddr = *(struct sockaddr_in *)ifi->ifi_addr;
-        servaddr.sin_port = htons(PORT_NO);
+        servaddr.sin_port = htons(in_port_no);
         Bind(sockfd[counter++], (SA *)&servaddr, sizeof(servaddr));
     }
     free_ifi_info_plus(ifihead);
@@ -147,7 +140,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 
         // To get server IP address
         len = sizeof(struct sockaddr_in);
-        Getsockname(sock_fd[req_sock],(SA *) &servAddr, &len);
+        Getsockname(sock_fd[req_sock], (SA *) &servAddr, &len);
 
         printf("Using Server IP:Port => %s\n", Sock_ntop((SA *) &servAddr, sizeof(struct sockaddr_in)));
 
@@ -159,7 +152,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         Bind(connFd, (SA *)&servAddr, sizeof(servAddr));
 
         // Get new port number for connection socket
-        Getsockname(connFd,(SA *) &servAddr, &len);
+        Getsockname(connFd, (SA *) &servAddr, &len);
         newChildPortNo = ntohs(servAddr.sin_port);
         
         // Connect to Client request
@@ -188,25 +181,24 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 static int listenAllConnections(int *sockfd,int totalIP) {
     char message[MAXLINE];
     sigset_t sigset;
-    fd_set rset;
+    fd_set fixedFdset, varFdset;
     int maxfd = sockfd[totalIP-1] + 1;
     int i, n;
 
-    FD_ZERO(&rset);
+    FD_ZERO(&fixedFdset);
+    for (i = 0 ; i < totalIP; i++)
+        FD_SET(sockfd[i], &fixedFdset);
 
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGCHLD);
 
     while (1) {
-        for (i = 0 ; i < totalIP; i++)
-            FD_SET(sockfd[i], &rset);
-
-    retry:
         // Listen using select on all sockets
-        if (select(maxfd, &rset, NULL, NULL, NULL) < 0) {
+        varFdset = fixedFdset;
+        if (select(maxfd, &varFdset, NULL, NULL, NULL) < 0) {
             if (errno == EINTR) {
                 // Retry select() if interupted by signal handler of SIGCHLD
-                goto retry;
+                continue;
             } else {
                 err_sys("Server termination due to error on select()");
             }
@@ -214,7 +206,7 @@ static int listenAllConnections(int *sockfd,int totalIP) {
         
         // Check which Socket got packets
         for (i = 0 ; i < totalIP; i++) {
-            if (FD_ISSET(sockfd[i], &rset)) {
+            if (FD_ISSET(sockfd[i], &varFdset)) {
                 struct sockaddr_in cliaddr;
                 socklen_t len = sizeof(cliaddr);
 
