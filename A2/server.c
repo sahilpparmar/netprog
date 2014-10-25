@@ -161,9 +161,6 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         // Get new port number for connection socket
         Getsockname(connFd, (SA *) &servAddr, &len);
         newChildPortNo = ntohs(servAddr.sin_port);
-        
-        // Connect to Client request
-        Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
 
         sprintf(sendBuf, "%d", newChildPortNo);
         send2HSFromConnFd = 0;
@@ -175,7 +172,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         Sendto(sock_fd[req_sock], sendBuf, strlen(sendBuf), 0, (SA *) &cliaddr, sizeof(cliaddr));
         if (send2HSFromConnFd) {
             printf("Second HS sent from Conn Socket: New Conn Port No => %s\n", sendBuf);
-            Writen(connFd, sendBuf, strlen(sendBuf));
+            Sendto(connFd, sendBuf, strlen(sendBuf), 0, (SA *) &cliaddr, sizeof(cliaddr));
         }
         
         // TODO: change alarm to setitimer
@@ -186,8 +183,9 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
             send2HSFromConnFd = 1;
             goto send2HSAgain;
         } 
+
         // Receive third Handshake
-        len = Read(connFd, recvBuf, MAXLINE);
+        len = Recvfrom(connFd, recvBuf, MAXLINE, 0, NULL, NULL);
 
         alarm(0);
         recvBuf[len] = '\0';
@@ -195,7 +193,11 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         
         Close(sock_fd[req_sock]);
 
+        // Connect to Client request
+        Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
+
         // TODO: Begin file transfer
+        sprintf(sendBuf, "F");
         Writen(connFd, sendBuf, strlen(sendBuf));
 
         exit(0);
