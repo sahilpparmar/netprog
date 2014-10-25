@@ -7782,6 +7782,7 @@ LIB_OBJS="$LIB_OBJS dg_cli.o"
 LIB_OBJS="$LIB_OBJS dg_echo.o"
 LIB_OBJS="$LIB_OBJS error.o"
 LIB_OBJS="$LIB_OBJS get_ifi_info.o"
+LIB_OBJS="$LIB_OBJS get_ifi_info_plus.o"
 LIB_OBJS="$LIB_OBJS gf_time.o"
 LIB_OBJS="$LIB_OBJS host_serv.o"
 if test "$ac_cv_func_hstrerror" = no ; then
