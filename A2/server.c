@@ -1,7 +1,4 @@
-#include "unp.h"
-#include "unpifiplus.h"
 #include "common.h"
-#include "setjmp.h"
 
 typedef struct client_request {
     struct sockaddr_in cliaddr;
@@ -49,29 +46,21 @@ static int initializeParams() {
     Fclose(inp_file);
 }
 
-static int* getAllInterfaces(int *totalIP) {
-    struct ifi_info *ifi, *ifihead;
-    struct sockaddr *sa;
-    int i, counter = 0;
+static int* bindAllInterfaces(struct ifi_info *ifihead, int totalIP) {
+    struct ifi_info *ifi;
+    struct sockaddr_in servaddr;
     int *sockfd;
-    struct sockaddr_in servaddr, cliaddr;
-    u_char *ptr;
-    
-    // Get all interfaces
-    ifihead = Get_ifi_info_plus(AF_INET, 1/*doalias*/);
-    printf("\nFollowing are different Interfaces:\n");
-    *totalIP = print_ifi_info_plus(ifihead);
+    int i;
 
-    sockfd = (int *) malloc(*totalIP * sizeof(int));
+    sockfd = (int *) Malloc(totalIP * sizeof(int));
 
-    for (ifi = ifihead; ifi != NULL; ifi = ifi->ifi_next) {
-        sockfd[counter] = Socket(AF_INET, SOCK_DGRAM, 0);
+    for (i = 0, ifi = ifihead; ifi != NULL; ifi = ifi->ifi_next) {
+        sockfd[i] = Socket(AF_INET, SOCK_DGRAM, 0);
         bzero(&servaddr, sizeof(servaddr));
         servaddr = *(struct sockaddr_in *)ifi->ifi_addr;
         servaddr.sin_port = htons(in_port_no);
-        Bind(sockfd[counter++], (SA *)&servaddr, sizeof(servaddr));
+        Bind(sockfd[i++], (SA *)&servaddr, sizeof(servaddr));
     }
-    free_ifi_info_plus(ifihead);
 
     return sockfd;
 }
@@ -98,7 +87,7 @@ static client_request* searchAndUpdateClientList(struct sockaddr_in cliaddr) {
     }
     
     // Create a node if the entry is not present
-    client_request *new_node = (client_request*) malloc(sizeof(client_request));
+    client_request *new_node = (client_request*) Malloc(sizeof(client_request));
     new_node->cliaddr = cliaddr;
     new_node->next = Head;
     Head = new_node; // update head node
@@ -120,7 +109,7 @@ static void sig_alarm(int signo) {
 }
 
 static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_sock,
-                            int total_IP, char* fileName)
+                            int total_IP, char* fileName, int isLocal)
 {
     pid_t pid;
 
@@ -153,6 +142,12 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 
         // Create a new connection socket
         connFd = Socket(AF_INET, SOCK_DGRAM, 0);
+
+        // Set socket option -> SO_DONTROUTE if client is local
+        if (isLocal) {
+            int optVal = 1;
+            Setsockopt(connFd, SOL_SOCKET, SO_DONTROUTE, &optVal, sizeof(optVal));
+        }
 
         // Bind connection socket
         servAddr.sin_port = 0; // Choose a new port number
@@ -206,7 +201,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
     return pid;
 } 
 
-static int listenAllConnections(int *sockfd,int totalIP) {
+static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int totalIP) {
     char message[MAXLINE];
     sigset_t sigset;
     fd_set fixedFdset, varFdset;
@@ -217,6 +212,7 @@ static int listenAllConnections(int *sockfd,int totalIP) {
     for (i = 0 ; i < totalIP; i++)
         FD_SET(sockfd[i], &fixedFdset);
 
+    Signal(SIGCHLD, sig_child); 
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGCHLD);
 
@@ -241,12 +237,16 @@ static int listenAllConnections(int *sockfd,int totalIP) {
                 n = Recvfrom(sockfd[i], message, MAXLINE, 0, (SA *)&cliaddr, &len);
                 message[n] = '\0';
                 if (searchAndUpdateClientList(cliaddr) != NULL) {
-                    printf("\nNew request from client => %s\n", Sock_ntop((SA *) &cliaddr, sizeof(struct sockaddr_in)));
+                    int isLocal = verifyIfLocalAndGetHostIP(ifihead, &cliaddr.sin_addr, NULL);
+
+                    printf("\nNew request from client %son Local Interface => %s\n",
+                            isLocal == 0 ? "Not " : "",
+                            Sock_ntop((SA *) &cliaddr, sizeof(struct sockaddr_in)));
                     printf("First HS received : fileName => %s\n", message);
 
                     // Block SIGCHLD until parent sets child pid in client_request list
                     sigprocmask(SIG_BLOCK, &sigset, NULL);
-                    Head->childpid = serveNewClient(cliaddr, sockfd, i, totalIP, message);
+                    Head->childpid = serveNewClient(cliaddr, sockfd, i, totalIP, message, isLocal);
                     sigprocmask(SIG_UNBLOCK, &sigset, NULL);
                 }
             }
@@ -255,12 +255,20 @@ static int listenAllConnections(int *sockfd,int totalIP) {
 }
 
 int main() {
+    struct ifi_info *ifihead;
     int *sockfd, totalIP;
 
-    Signal(SIGCHLD, sig_child); 
     initializeParams();
-    sockfd = getAllInterfaces(&totalIP);
-    listenAllConnections(sockfd, totalIP);
+    
+    // Get all interfaces
+    ifihead = Get_ifi_info_plus(AF_INET, 1/*doalias*/);
+    printf("\nFollowing are different Interfaces:\n");
+    totalIP = print_ifi_info_plus(ifihead);
+
+    sockfd = bindAllInterfaces(ifihead, totalIP);
+    listenAllConnections(ifihead, sockfd, totalIP);
+
+    free_ifi_info_plus(ifihead);
     exit(0);
 }
 

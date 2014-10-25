@@ -102,3 +102,53 @@ int print_ifi_info_plus(struct ifi_info *ifihead) {
     return num;
 }
 
+#define IFI_ADDR(ifi) (((struct sockaddr_in*)ifi->ifi_addr)->sin_addr.s_addr)
+#define IFI_MASK(ifi) (((struct sockaddr_in*)ifi->ifi_ntmaddr)->sin_addr.s_addr)
+
+static int verifyIfLocal(struct ifi_info *new_host_ifi,
+                         struct ifi_info *host_ifi,
+                         struct in_addr *remote_ip)
+{
+    in_addr_t new_mask = IFI_MASK(new_host_ifi);
+
+    if ((IFI_ADDR(new_host_ifi) & new_mask) == (remote_ip->s_addr & new_mask)) {
+        // Get longest prefix match
+        if (host_ifi == NULL || (IFI_MASK(host_ifi) < new_mask))
+            return 1;
+    }
+    return 0;
+}
+
+int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
+                              struct in_addr *remote_ip,
+                              struct in_addr *host_ip)
+{
+    struct ifi_info *ifi, *local_ifi, *arbitrary_ifi;
+    int isLocal;
+
+    local_ifi = arbitrary_ifi = NULL;
+    for (ifi = ifihead ; ifi != NULL; ifi = ifi->ifi_next) {
+        if (verifyIfLocal(ifi, local_ifi, remote_ip)) {
+            local_ifi = ifi;
+        }
+        if (!(ifi->ifi_flags & IFF_LOOPBACK)) {
+            arbitrary_ifi = ifi;
+        }
+    }
+
+    isLocal = 0;
+    if (local_ifi) {
+        if (host_ip)
+            host_ip->s_addr = IFI_ADDR(local_ifi);
+        if (!(local_ifi->ifi_flags & IFF_LOOPBACK))
+            isLocal = 1;
+    } else if (arbitrary_ifi) {
+        if (host_ip)
+            host_ip->s_addr = IFI_ADDR(arbitrary_ifi);
+    } else {
+        isLocal = -1;
+    }
+
+    return isLocal;
+}
+
