@@ -1,9 +1,10 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
-#define SERVER_IN   "server.in"
-#define CLIENT_IN   "client.in"
-#define PARAM_SIZE  100
+#define SERVER_IN       "server.in"
+#define CLIENT_IN       "client.in"
+#define PARAM_SIZE      100
+#define MAX_RETRANSMIT  12
 
 char* getStringParamValue(FILE *inp_file, char *paramVal);
 int getIntParamValue(FILE *inp_file);

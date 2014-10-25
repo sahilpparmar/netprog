@@ -1,6 +1,7 @@
 #include "unp.h"
 #include "unpifiplus.h"
 #include "common.h"
+#include "setjmp.h"
 
 #define IFI_ADDR(ifi) (((struct sockaddr_in*)ifi->ifi_addr)->sin_addr.s_addr)
 #define IFI_MASK(ifi) (((struct sockaddr_in*)ifi->ifi_ntmaddr)->sin_addr.s_addr)
@@ -12,6 +13,36 @@ static int   in_receive_win;               // Size of receiving sliding window
 static int   in_random_seed;               // Random Gen Seed Value
 static float in_packet_loss;               // Probability of packet loss
 static int   in_read_delay;                // mean millisec at which client reads data from receving window
+
+static int isPacketLost() {
+    double rval = drand48();
+    //printf("%f %f\n", rval, in_packet_loss);
+    if (rval > in_packet_loss)
+        return 0;
+    return 1;
+}
+
+static int writeWithPacketDrops(int fd, void *ptr, size_t nbytes) {
+    if (isPacketLost()) {
+        err_msg("Write Packet Loss");
+        return 0;
+    }
+    Writen(fd, ptr, nbytes);
+    return 1;
+}
+
+static int readWithPacketDrops(int fd, void *ptr, size_t nbytes) {
+    int n;
+    do {
+        n = Read(fd, ptr, nbytes);
+        if (isPacketLost()) {
+            err_msg("Read Packet Loss");
+            continue;
+        }
+    } while (0);
+
+    return n;
+}
 
 static void parseClientParams() {
     FILE *inp_file = fopen(CLIENT_IN, "r");
@@ -123,28 +154,61 @@ static int bindAndConnect(struct sockaddr_in servAddr, struct in_addr client_ip)
     return sockfd;
 }
 
+static sigjmp_buf jmpFor2HS;
+
+static void sig_alarm(int signo) {
+    siglongjmp(jmpFor2HS, 1);
+}
+
 static int handshake(int sockfd, struct sockaddr_in servAddr, char *fileName, int flags) {
-    char message[MAXLINE];
-    int newPortNo, n;
+    char sendBuf[MAXLINE], recvBuf[MAXLINE];
+    int newPortNo, n, retransmitCount;
     
-    // 1st HS
-    strcpy(message, fileName);
-    Writen(sockfd, message, strlen(message));
+    retransmitCount = 0;
+    strcpy(sendBuf, fileName);
+    
+send1HSAgain:
+    // Send 1st HS
     printf("1st HS sent\n");
+    writeWithPacketDrops(sockfd, sendBuf, strlen(sendBuf));
 
-    // 2nd HS
-    n = Read(sockfd, message, MAXLINE);
-    printf("2nd HS received");
-    message[n] = '\0';
-    printf(" New Port No : %s\n", message);
-    newPortNo = atoi(message);
+    // TODO: change alarm to setitimer
+    alarm(3);
+    
+    if (sigsetjmp(jmpFor2HS, 1) != 0) {
+        retransmitCount++;
+        if (retransmitCount > MAX_RETRANSMIT) {
+            err_quit("Client Terminated due to Timeout!!");
+        }
+        printf("Timeout!!\n");
+        goto send1HSAgain;
+    } 
 
-    // 3rd HS
+    // Receive 2nd HS
+    n = readWithPacketDrops(sockfd, recvBuf, MAXLINE);
+
+    alarm(0);
+    recvBuf[n] = '\0';
+    newPortNo = atoi(recvBuf);
+    printf("2nd HS received: New Port No => %d\n", newPortNo);
+
+    // Reconnect to new port number
     servAddr.sin_port = htons(newPortNo);
     Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
-    strcpy(message, "Done");
-    Writen(sockfd, message, strlen(message));
+
+    strcpy(sendBuf, "Done");
+
+send3HSAgain:
+    // Send 3rd HS
     printf("3rd HS sent\n");
+    writeWithPacketDrops(sockfd, sendBuf, strlen(sendBuf));
+
+    // TODO: Read 1st File Packet
+    n = readWithPacketDrops(sockfd, recvBuf, MAXLINE);
+    if (0 /*packet says retransmit 3HS*/)
+        goto send3HSAgain;
+//  else begin file transfer
+
 }
 
 int main() {
@@ -177,6 +241,9 @@ int main() {
     servAddr.sin_port = htons(in_server_port);
 
     sockfd = bindAndConnect(servAddr, client_ip);
+
+    srand48(in_random_seed);
+    Signal(SIGALRM, sig_alarm);
 
     // 3 way Handshake
     handshake(sockfd, servAddr, in_file_name, isLocal ? MSG_DONTROUTE : 0);

@@ -1,6 +1,7 @@
 #include "unp.h"
 #include "unpifiplus.h"
 #include "common.h"
+#include "setjmp.h"
 
 typedef struct client_request {
     struct sockaddr_in cliaddr;
@@ -112,6 +113,12 @@ static void Sleep(int sec, int msec) {
     Select(1, NULL, NULL, NULL, &timeout);
 }
 
+static sigjmp_buf jmpbuf;
+
+static void sig_alarm(int signo) {
+    siglongjmp(jmpbuf, 1);
+}
+
 static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_sock,
                             int total_IP, char* fileName)
 {
@@ -135,8 +142,8 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         // create a new socked and connect with the client and bind to it
         
         struct sockaddr_in servAddr;
-        int len, connFd, newChildPortNo;
-        char message[MAXLINE];
+        char sendBuf[MAXLINE], recvBuf[MAXLINE];
+        int len, connFd, newChildPortNo, send2HSFromConnFd;
 
         // To get server IP address
         len = sizeof(struct sockaddr_in);
@@ -158,19 +165,38 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         // Connect to Client request
         Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
 
+        sprintf(sendBuf, "%d", newChildPortNo);
+        send2HSFromConnFd = 0;
+        Signal(SIGALRM, sig_alarm);
+
+    send2HSAgain:
         // Send second handshake
-        sprintf(message, "%d", newChildPortNo);
-        Sendto(sock_fd[req_sock], message, strlen(message), 0, (SA *) &cliaddr, sizeof(cliaddr));
-        printf("Second HS sent : New Conn Port No => %s\n", message);
+        printf("Second HS sent from Listening Socket : New Conn Port No => %s\n", sendBuf);
+        Sendto(sock_fd[req_sock], sendBuf, strlen(sendBuf), 0, (SA *) &cliaddr, sizeof(cliaddr));
+        if (send2HSFromConnFd) {
+            printf("Second HS sent from Conn Socket: New Conn Port No => %s\n", sendBuf);
+            Writen(connFd, sendBuf, strlen(sendBuf));
+        }
         
+        // TODO: change alarm to setitimer
+        alarm(3);
+
+        if (sigsetjmp(jmpbuf, 1) != 0) {
+            printf("Timeout!!\n");
+            send2HSFromConnFd = 1;
+            goto send2HSAgain;
+        } 
         // Receive third Handshake
-        len = Read(connFd, message, MAXLINE);
-        message[len] = '\0';
-        printf("Third HS received : ACK => %s\n", message);
+        len = Read(connFd, recvBuf, MAXLINE);
+
+        alarm(0);
+        recvBuf[len] = '\0';
+        printf("Third HS received : ACK => %s\n", recvBuf);
         
         Close(sock_fd[req_sock]);
 
         // TODO: Begin file transfer
+        Writen(connFd, sendBuf, strlen(sendBuf));
 
         exit(0);
     } // End - Child Process
