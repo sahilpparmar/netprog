@@ -152,7 +152,7 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
     return isLocal;
 }
 
-int fillPckt(tcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned int winSize, char* dataPtr, int len) {
+int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned int winSize, char* dataPtr, int len) {
     packet->seqNum = seqNum;
     packet->ackNum = ackNum;
     packet->winSize = winSize;
@@ -168,7 +168,7 @@ int fillPckt(tcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned
         return 0;
 }
 
-int readPckt(tcpPckt *packet, int packet_size, unsigned int *seqNum, unsigned int *ackNum, unsigned int *winSize, char* dataPtr) {
+int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum, unsigned int *ackNum, unsigned int *winSize, char* dataPtr) {
     *seqNum = packet->seqNum; 
     *ackNum = packet->ackNum;
     *winSize = packet->winSize;

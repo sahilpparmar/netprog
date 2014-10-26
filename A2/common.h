@@ -19,7 +19,7 @@ typedef struct {
     unsigned int ackNum; // 32 bits
     unsigned int winSize; // 32 bits
     char data[MAX_PAYLOAD]; // max 500
-}tcpPckt; // Total size: 512
+}TcpPckt; // Total size: 512
 
 
 #define _1TAB    "\t"
@@ -37,6 +37,6 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
                               struct in_addr *host_ip);
 
 
-int fillPckt(tcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned int winSize, char* dataPtr, int len);
-int readPckt(tcpPckt *packet, int packet_size, unsigned int *seqNum, unsigned int *ackNum, unsigned int *winSize, char* dataPtr); 
+int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned int winSize, char* dataPtr, int len);
+int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum, unsigned int *ackNum, unsigned int *winSize, char* dataPtr); 
 #endif /* !_COMMON_H */

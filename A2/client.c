@@ -133,8 +133,8 @@ static void sig_alarm(int signo) {
 }
 
 static int handshake(int sockfd, struct sockaddr_in servAddr) {
-    tcpPckt packet; //TODO change TcpPckt 
-    unsigned int seqNum = 0 ;
+    TcpPckt packet;
+    unsigned int seqNum = 0;
     unsigned int ackNum;
     unsigned int winSize;
     char recvBuf[MAX_PAYLOAD];

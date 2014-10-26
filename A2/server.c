@@ -110,7 +110,7 @@ static void sig_alarm(int signo) {
 }
 
 
-int getNextPacket(tcpPckt *pckt, unsigned int seq, unsigned int ack, unsigned int winSize, int fd) {
+int getNextPacket(TcpPckt *pckt, unsigned int seq, unsigned int ack, unsigned int winSize, int fd) {
     char buf[MAX_PAYLOAD];
     int ret = 0;
     int n = Read(fd, buf, MAX_PAYLOAD);
@@ -146,7 +146,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         int len, connFd, newChildPortNo, send2HSFromConnFd;
         struct rtt_info rttInfo;
         
-        tcpPckt packet;
+        TcpPckt packet;
         unsigned int seqNum = 0;
         unsigned int ackNum;
         unsigned int winSize;
@@ -218,7 +218,6 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         // Connect to Client request
         Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
 
-        // TODO: Begin file transfer
         FILE *fp;
         
         char path[] ="data.file";
@@ -227,7 +226,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         /* Ack becomes the seq no of the next packet
          * seqNum = ackNum
          */
-        seqNum = ackNum-1;
+        seqNum = ackNum-1; //TODO: Correctly update sequence number and Ack number
 
         while ((len = getNextPacket(&packet, ++seqNum, ++ackNum, winSize, fd)) > 0) {
             Writen(connFd,(void *) &packet, HEADER_LEN + len);
@@ -249,7 +248,7 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
     int maxfd = sockfd[totalIP-1] + 1;
     int i, n;
     
-    tcpPckt packet; //TODO change TcpPckt 
+    TcpPckt packet; 
     unsigned int seqNum = 0 ;
     unsigned int ackNum;
     unsigned int winSize;
@@ -291,11 +290,11 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
                     printf("\nNew request from client %son Local Interface => %s\n",
                             isLocal == 0 ? "Not " : "",
                             Sock_ntop((SA *) &cliaddr, sizeof(struct sockaddr_in)));
-                    printf("First HS received : fileName => %s\n", packet.data);
+                    printf("First HS received : fileName => %s\n", recvBuf);
 
                     // Block SIGCHLD until parent sets child pid in client_request list
                     sigprocmask(SIG_BLOCK, &sigset, NULL);
-                    Head->childpid = serveNewClient(cliaddr, sockfd, i, totalIP, packet.data, isLocal);
+                    Head->childpid = serveNewClient(cliaddr, sockfd, i, totalIP, recvBuf, isLocal);
                     sigprocmask(SIG_UNBLOCK, &sigset, NULL);
                 }
             }
