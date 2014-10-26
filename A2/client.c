@@ -37,7 +37,7 @@ static int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
             break;
         }
     }
-    printf(_4TABS "Received\n", msg);
+    printf(_4TABS "Received\n");
     return n;
 }
 
@@ -133,15 +133,21 @@ static void sig_alarm(int signo) {
 }
 
 static int handshake(int sockfd, struct sockaddr_in servAddr) {
-    char sendBuf[MAXLINE], recvBuf[MAXLINE];
-    int newPortNo, n, retransmitCount;
+    tcpPckt packet; //TODO change TcpPckt 
+    unsigned int seqNum = 0 ;
+    unsigned int ackNum;
+    unsigned int winSize;
+    char recvBuf[MAX_PAYLOAD];
+    
+    int newPortNo, n, retransmitCount, len;
     
     retransmitCount = 0;
-    strcpy(sendBuf, in_file_name);
     
 send1HSAgain:
     // Send 1st HS
-    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr), sendBuf, strlen(sendBuf),
+    fillPckt(&packet, 1, 2, in_receive_win, in_file_name, strlen(in_file_name));
+
+    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),&packet, HEADER_LEN+strlen(in_file_name),
                         "Sending 1st HS");
     ++retransmitCount;
 
@@ -157,10 +163,12 @@ send1HSAgain:
     } 
 
     // Receive 2nd HS
-    n = readWithPacketDrops(sockfd, recvBuf, MAXLINE, "Receving 2nd HS");
+        n = readWithPacketDrops(sockfd, (void *) &packet, 
+                DATAGRAM_SIZE, "Receiving 2nd HS");
+        readPckt(&packet, n, &seqNum, &ackNum, &winSize, recvBuf);
+        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
     alarm(0);
-    recvBuf[n] = '\0';
     newPortNo = atoi(recvBuf);
 
     // Reconnect to new port number
@@ -168,18 +176,35 @@ send1HSAgain:
     servAddr.sin_port = htons(newPortNo);
     Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
 
-    strcpy(sendBuf, "Done");
 
 send3HSAgain:
     // Send 3rd HS
-    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr), sendBuf, strlen(sendBuf),
-                        "Sending 3rd HS");
+    fillPckt(&packet, 3, 11, in_receive_win, NULL, 0);
 
-    // TODO: Read 1st File Packet and verify sequence number
-    n = readWithPacketDrops(sockfd, recvBuf, MAXLINE, "Receving New Packet");
-    if (n != 1)
+    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),
+            &packet, HEADER_LEN, "Sending 3rd HS");
+
+
+
+    n = readWithPacketDrops(sockfd, (void *) &packet,
+            DATAGRAM_SIZE, "Receiving 1st file packet");
+    readPckt(&packet, n, &seqNum, &ackNum, &winSize, recvBuf);
+
+    if (seqNum == 2) /* second handshake */
         goto send3HSAgain;
-//  else begin file transfer
+
+    // else its first packet of file transfer
+    // Invoke producer and consumer threads
+
+    printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
+    printf("%s\n",recvBuf);
+    
+    do {
+        len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE, "Receiving next file packet");
+        readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
+        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
+        printf("%s\n",recvBuf);
+    } while(len == DATAGRAM_SIZE);
 
 }
 
