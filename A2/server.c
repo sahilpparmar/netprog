@@ -1,4 +1,5 @@
 #include "common.h"
+#include "unprtt.h"
 
 typedef struct client_request {
     struct sockaddr_in cliaddr;
@@ -133,6 +134,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         struct sockaddr_in servAddr;
         char sendBuf[MAXLINE], recvBuf[MAXLINE];
         int len, connFd, newChildPortNo, send2HSFromConnFd;
+        struct rtt_info rttInfo;
 
         // To get server IP address
         len = sizeof(struct sockaddr_in);
@@ -161,9 +163,12 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         send2HSFromConnFd = 0;
         Signal(SIGALRM, sig_alarm);
 
+        rtt_init(&rttInfo);
+        rtt_newpack(&rttInfo);
+
     send2HSAgain:
         // Send second handshake
-        printf("Second HS sent from Listening Socket : New Conn Port No => %s\n", sendBuf);
+        printf("Second HS sent from Listening Socket: New Conn Port No => %s\n", sendBuf);
         Sendto(sock_fd[req_sock], sendBuf, strlen(sendBuf), 0, (SA *) &cliaddr, sizeof(cliaddr));
         if (send2HSFromConnFd) {
             printf("Second HS sent from Conn Socket: New Conn Port No => %s\n", sendBuf);
@@ -171,10 +176,13 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         }
         
         // TODO: change alarm to setitimer
-        alarm(3);
+        alarm(rtt_start(&rttInfo)/1000);
 
         if (sigsetjmp(jmpbuf, 1) != 0) {
-            printf("Timeout!!\n");
+            printf(_3TABS "Timeout!\n");
+            if (rtt_timeout(&rttInfo)) {
+                err_quit("Server Child Terminated due to 12 Timeouts");
+            }
             send2HSFromConnFd = 1;
             goto send2HSAgain;
         } 
@@ -183,6 +191,8 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         len = Recvfrom(connFd, recvBuf, MAXLINE, 0, NULL, NULL);
 
         alarm(0);
+        rtt_stop(&rttInfo);
+
         recvBuf[len] = '\0';
         printf("Third HS received : ACK => %s\n", recvBuf);
         

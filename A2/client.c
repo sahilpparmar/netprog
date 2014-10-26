@@ -164,7 +164,7 @@ send1HSAgain:
     newPortNo = atoi(recvBuf);
 
     // Reconnect to new port number
-    printf(_2TABS "Reconnecting socket to new Port No => %d\n", newPortNo);
+    printf("Reconnecting socket to new Port No => %d\n", newPortNo);
     servAddr.sin_port = htons(newPortNo);
     Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
 
