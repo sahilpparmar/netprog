@@ -1,0 +1,36 @@
+CC = gcc
+
+HOME=/home/courses/cse533/Stevens/unpv13e_solaris2.10
+#HOME=/home/sahil/netprog/unpv13e
+#HOME=/home/dexter/Desktop/Shared/hgfs/SBU-Courses/NP/Assignment/code-ubuntu/netprog/unpv13e
+
+LIBS = -lresolv -lnsl -lsocket -lpthread\
+	${HOME}/libunp.a\
+	
+FLAGS = -g -O2
+
+CFLAGS = ${FLAGS} -I${HOME}/lib -I/home/courses/cse533/Asgn2_code/
+
+all: client server
+
+server: server.o common.o get_ifi_info_plus.o
+	${CC} ${FLAGS} -o server server.o common.o get_ifi_info_plus.o ${LIBS}
+server.o: server.c
+	${CC} ${CFLAGS} -c server.c
+
+client: client.o common.o get_ifi_info_plus.o
+	${CC} ${FLAGS} -o client client.o common.o get_ifi_info_plus.o ${LIBS}
+client.o: client.c
+	${CC} ${CFLAGS} -c client.c
+
+common.o: common.c
+	${CC} ${CFLAGS} -c common.c
+rtt.o: rtt.c
+	${CC} ${CFLAGS} -c rtt.c
+
+get_ifi_info_plus.o: /home/courses/cse533/Asgn2_code/get_ifi_info_plus.c
+	${CC} ${CFLAGS} -c /home/courses/cse533/Asgn2_code/get_ifi_info_plus.c
+
+clean:
+	rm -f server client *.o
+
