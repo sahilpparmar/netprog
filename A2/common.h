@@ -22,14 +22,16 @@
 #define SYN_SEQ_NO      1
 #define SYN_ACK_SEQ_NO  2
 #define ACK_SEQ_NO      3
+#define FIN_SEQ_NO      4
+#define FIN_ACK_SEQ_NO  5
 #define DATA_SEQ_NO     11
 
 typedef struct {
-    unsigned int seqNum;    // 4 bytes
-    unsigned int ackNum;    // 4 bytes
-    unsigned int winSize;   // 4 bytes
-    char data[MAX_PAYLOAD]; // 500 bytes
-} TcpPckt;                  // Total size: 512
+    unsigned int seqNum;        // 4 bytes
+    unsigned int ackNum;        // 4 bytes
+    unsigned int winSize;       // 4 bytes
+    char data[MAX_PAYLOAD+1];   // 500 bytes
+} TcpPckt;                      // Total size: 512
 
 char* getStringParamValue(FILE *inp_file, char *paramVal);
 int getIntParamValue(FILE *inp_file);
@@ -39,7 +41,6 @@ int print_ifi_info_plus(struct ifi_info *ifihead);
 int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
                               struct in_addr *remote_ip,
                               struct in_addr *host_ip);
-
 
 int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
         unsigned int winSize, char* dataPtr, int len);

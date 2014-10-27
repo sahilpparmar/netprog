@@ -1,19 +1,12 @@
-#include "common.h"
-#include "unprtt.h"
-
-typedef struct client_request {
-    struct sockaddr_in cliaddr;
-    pid_t childpid;
-    struct client_request *next;
-} client_request;
+#include "server.h"
 
 static int in_port_no, in_window_size;
-static client_request *Head = NULL;
+static ClientRequest *Head = NULL;
 
 static void sig_child(int signo) { 
     // Remove child entry from the linkedlist 
-    client_request *cur = Head;
-    client_request *prev = NULL;
+    ClientRequest *cur = Head;
+    ClientRequest *prev = NULL;
     pid_t pid = wait(NULL);
     
     while (cur != NULL) {
@@ -77,8 +70,8 @@ static int compare_address(struct sockaddr_in *prev_req, struct sockaddr_in *new
     }
 }
 
-static client_request* searchAndUpdateClientList(struct sockaddr_in cliaddr) {
-    client_request *cur = Head;
+static ClientRequest* searchAndUpdateClientList(struct sockaddr_in cliaddr) {
+    ClientRequest *cur = Head;
  
     // Check if it is a duplicate request
     while(cur != NULL) {
@@ -88,7 +81,7 @@ static client_request* searchAndUpdateClientList(struct sockaddr_in cliaddr) {
     }
     
     // Create a node if the entry is not present
-    client_request *new_node = (client_request*) Malloc(sizeof(client_request));
+    ClientRequest *new_node = (ClientRequest*) Malloc(sizeof(ClientRequest));
     new_node->cliaddr = cliaddr;
     new_node->next = Head;
     Head = new_node; // update head node
@@ -111,13 +104,11 @@ static void sig_alarm(int signo) {
 
 
 static int getNextPacket(TcpPckt *pckt, unsigned int seq, unsigned int ack, unsigned int winSize, int fd) {
-    char buf[MAX_PAYLOAD];
+    char buf[MAX_PAYLOAD+1];
     int ret = 0;
     int n = Read(fd, buf, MAX_PAYLOAD);
 
-    //int len = MAX_PAYLOAD; //TODO How to calculate
-    fillPckt(pckt, seq, ack, winSize, buf, n);
-    return n + HEADER_LEN;
+    return fillPckt(pckt, seq, ack, winSize, buf, n);
 }
 
 static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_sock,
@@ -150,7 +141,8 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         unsigned int seqNum = 0;
         unsigned int ackNum;
         unsigned int winSize;
-        char sendBuf[MAX_PAYLOAD], recvBuf[MAX_PAYLOAD];
+        char sendBuf[MAX_PAYLOAD+1], recvBuf[MAX_PAYLOAD+1];
+        char errMsg[MAX_PAYLOAD+1] = "";
 
         // To get server IP address
         len = sizeof(struct sockaddr_in);
@@ -199,7 +191,9 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         if (sigsetjmp(jmpbuf, 1) != 0) {
             printf(_3TABS "Timeout!\n");
             if (rtt_timeout(&rttInfo)) {
-                err_msg("Server Child Terminated due to 12 Timeouts");
+                char *str = "Server Child Terminated due to 12 Timeouts";
+                err_msg(str);
+                strcpy(errMsg, str);
                 goto error;
             }
             send2HSFromConnFd = 1;
@@ -207,7 +201,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         } 
 
         // Receive third Handshake
-        len = Recvfrom(connFd, &packet, MAXLINE, 0,  NULL, NULL);
+        len = Recvfrom(connFd, &packet, DATAGRAM_SIZE, 0,  NULL, NULL);
 
         alarm(0);
         rtt_stop(&rttInfo);
@@ -221,13 +215,13 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 
         int fd;
         if ((fd = open(fileName, O_RDONLY)) == -1) {
-            err_msg("Server Child Terminated due to Invalid FileName");
+            char *str = "Server Child Terminated due to Invalid FileName";
+            err_msg(str);
+            strcpy(errMsg, str);
             goto error;
         }
 
-        /* Ack becomes the seq no of the next packet
-         * seqNum = ackNum
-         */
+        // Ack becomes the seq no of the next packet
         seqNum = ackNum;
 
         while ((len = getNextPacket(&packet, seqNum, 0, 0, fd)) >= HEADER_LEN) {
@@ -240,7 +234,9 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         }
 
 error:
-        // TODO: Send a FIN packet to child
+        // Send a FIN to terminate connection
+        len = fillPckt(&packet, FIN_SEQ_NO, 0, 0, errMsg, strlen(errMsg));
+        Writen(connFd, (void *) &packet, len);
 
         Close(sock_fd[req_sock]);
 
@@ -251,7 +247,6 @@ error:
 } 
 
 static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int totalIP) {
-    //char message[MAXLINE];
     sigset_t sigset;
     fd_set fixedFdset, varFdset;
     int maxfd = sockfd[totalIP-1] + 1;
@@ -261,7 +256,7 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
     unsigned int seqNum = 0 ;
     unsigned int ackNum;
     unsigned int winSize;
-    char recvBuf[MAX_PAYLOAD];
+    char recvBuf[MAX_PAYLOAD+1];
 
     FD_ZERO(&fixedFdset);
     for (i = 0 ; i < totalIP; i++)
@@ -289,7 +284,7 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
                 struct sockaddr_in cliaddr;
                 socklen_t len = sizeof(cliaddr);
         
-                n = Recvfrom(sockfd[i], &packet, MAXLINE, 0, (SA *)&cliaddr, &len);
+                n = Recvfrom(sockfd[i], &packet, DATAGRAM_SIZE, 0, (SA *)&cliaddr, &len);
                 readPckt(&packet, n, &seqNum, &ackNum, &winSize, recvBuf);
 
                 if (searchAndUpdateClientList(cliaddr) != NULL) {
@@ -301,7 +296,7 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
                     printf("First HS received: fileName => %s\n", recvBuf);
                     printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
-                    // Block SIGCHLD until parent sets child pid in client_request list
+                    // Block SIGCHLD until parent sets child pid in ClientRequest list
                     sigprocmask(SIG_BLOCK, &sigset, NULL);
                     Head->childpid = serveNewClient(cliaddr, sockfd, i, totalIP, recvBuf, isLocal);
                     sigprocmask(SIG_UNBLOCK, &sigset, NULL);

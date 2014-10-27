@@ -154,15 +154,15 @@ int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
     packet->ackNum = ackNum;
     packet->winSize = winSize;
     if (dataPtr == NULL){
-        packet->data[0] = 0;
-        return 0;
+        packet->data[0] = '\0';
+        return HEADER_LEN;
     }
-    if (memcpy((void *)&(packet->data), (const void *) dataPtr, (size_t) len) == NULL) {
+    if (memcpy((void *)packet->data, (const void *) dataPtr, (size_t) len) == NULL) {
         printf("Error detected in memcpy while reading packet\n");
         return -1;
     }
-    else
-        return 0;
+    dataPtr[MAX_PAYLOAD] = '\0';
+    return HEADER_LEN + len;
 }
 
 int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum,
@@ -170,7 +170,7 @@ int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum,
     *seqNum = packet->seqNum; 
     *ackNum = packet->ackNum;
     *winSize = packet->winSize;
-    if (memcpy((void *)dataPtr, (const void *)&(packet->data), packet_size-HEADER_LEN) == NULL) {
+    if (memcpy((void *)dataPtr, (const void *)packet->data, packet_size-HEADER_LEN) == NULL) {
         printf("Error detected in memcpy while reading packet \n");
         return -1;
     }

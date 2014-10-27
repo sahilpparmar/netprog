@@ -1,11 +1,11 @@
-#include "common.h"
+#include "client.h"
 
 static char  in_server_ip[PARAM_SIZE];     // Server IP
 static int   in_server_port;               // Server PortNo
 static char  in_file_name[PARAM_SIZE];     // FileName to be transfered
 static int   in_receive_win;               // Size of receiving sliding window
 static int   in_random_seed;               // Random Gen Seed Value
-static float in_packet_loss;               // Probability of packet loss
+float        in_packet_loss;               // Probability of packet loss
 static int   in_read_delay;                // mean millisec at which client reads data from receving window
 
 static void parseClientParams() {
@@ -95,45 +95,13 @@ static void sig_alarm(int signo) {
     siglongjmp(jmpFor2HS, 1);
 }
 
-static int isPacketLost() {
-    double rval = drand48();
-    //printf("%f %f", rval, in_packet_loss);
-    if (rval > in_packet_loss) {
-        return 0;
-    }
-    err_msg(_3TABS "Lost");
-    return 1;
-}
-
-static int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, char *msg) {
-    printf("\n%s: ", msg);
-    if (isPacketLost()) {
-        return -1;
-    }
-    printf(_4TABS "Sent\n");
-    Writen(fd, ptr, nbytes);//, 0, sa, salen);
-    return 1;
-}
-
-static int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
-    int n;
-     while (1) {
-        printf("\n%s: ", msg);
-        n = Read(fd, ptr, nbytes);//, 0, NULL, NULL);
-        if (!isPacketLost()) {
-            break;
-        }
-    }
-    printf(_4TABS "Received\n");
-    return n;
-}
-
-static int handshake(int sockfd, struct sockaddr_in servAddr) {
+static int handshake(int sockfd, struct sockaddr_in servAddr, RecWinQueue *RecWinQ) {
     TcpPckt packet;
     unsigned int seqNum, ackNum, winSize;
-    char recvBuf[MAX_PAYLOAD];
+    char recvBuf[MAX_PAYLOAD+1];
     int newPortNo, retransmitCount, len;
     
+    Signal(SIGALRM, sig_alarm);
     retransmitCount = 0;
     
 send1HSAgain:
@@ -186,27 +154,22 @@ send3HSAgain:
 
     // Verify if packet is for 2HS or 1st file packet
     if (seqNum == SYN_ACK_SEQ_NO) {
-        printf("Seq num: %d\t Ack num: %d\t(2 HS from Server)\n", seqNum, ackNum);
+        printf("Seq num: %d\t Ack num: %d\t(2HS from Server)\n", seqNum, ackNum);
         goto send3HSAgain;
     }
     printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
     printf("Data Contents:\n%s\n", recvBuf);
+    // TODO: Send an ACK
 
-    // Initialize Receiving Buffer and Invoke producer and consumer threads
-    
-    while (len == DATAGRAM_SIZE) {
-        len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
-                "Receiving next file packet");
-        readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
-        printf("Data Contents:\n%s\n", recvBuf);
-    }
+    // Initialize Receiving Window
+    initializeRecWinQ(RecWinQ, &packet, len, in_receive_win);
 }
 
 int main() {
     struct hostent *hostInfo;
     struct in_addr client_ip;
     struct sockaddr_in servAddr;
+    RecWinQueue RecWinQ;
     int sockfd, isLocal;
 
     // Read input parameters
@@ -235,10 +198,12 @@ int main() {
     sockfd = bindAndConnect(&servAddr, client_ip, isLocal);
 
     srand48(in_random_seed);
-    Signal(SIGALRM, sig_alarm);
 
     // 3 way Handshake
-    handshake(sockfd, servAddr);
+    handshake(sockfd, servAddr, &RecWinQ);
+
+    // Begin file transfer
+    fileTransfer(sockfd, &RecWinQ);
 
     return 0;
 }
