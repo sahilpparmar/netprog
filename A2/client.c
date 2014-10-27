@@ -8,39 +8,6 @@ static int   in_random_seed;               // Random Gen Seed Value
 static float in_packet_loss;               // Probability of packet loss
 static int   in_read_delay;                // mean millisec at which client reads data from receving window
 
-static int isPacketLost() {
-    double rval = drand48();
-    //printf("%f %f", rval, in_packet_loss);
-    if (rval > in_packet_loss) {
-        return 0;
-    }
-    err_msg(_3TABS "Lost");
-    return 1;
-}
-
-static int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, char *msg) {
-    printf("%s : ", msg);
-    if (isPacketLost()) {
-        return -1;
-    }
-    printf(_4TABS "Sent\n");
-    Writen(fd, ptr, nbytes);//, 0, sa, salen);
-    return 1;
-}
-
-static int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
-    int n;
-     while (1) {
-        printf("%s : ", msg);
-        n = Read(fd, ptr, nbytes);//, 0, NULL, NULL);
-        if (!isPacketLost()) {
-            break;
-        }
-    }
-    printf(_4TABS "Received\n");
-    return n;
-}
-
 static void parseClientParams() {
     FILE *inp_file = fopen(CLIENT_IN, "r");
 
@@ -56,7 +23,7 @@ static void parseClientParams() {
 
         Fclose(inp_file);
     } else {
-        err_quit("Unknown client argument file : '%s'", CLIENT_IN);
+        err_quit("Unknown client argument file: '%s'", CLIENT_IN);
     }
 }
 
@@ -75,10 +42,7 @@ static int verifyIfLocalAndGetClientIP(struct in_addr *server_ip, struct in_addr
     int isLocal;
 
     ifihead = Get_ifi_info_plus(AF_INET, 1);
-
-    printf("\nFollowing are different Interfaces:\n");
     print_ifi_info_plus(ifihead);
-    printf("\n");
     
     isLocal = verifyIfLocalAndGetHostIP(ifihead, server_ip, client_ip);
     
@@ -127,28 +91,59 @@ static int bindAndConnect(struct sockaddr_in *servAddr, struct in_addr client_ip
 }
 
 static sigjmp_buf jmpFor2HS;
-
 static void sig_alarm(int signo) {
     siglongjmp(jmpFor2HS, 1);
 }
 
+static int isPacketLost() {
+    double rval = drand48();
+    //printf("%f %f", rval, in_packet_loss);
+    if (rval > in_packet_loss) {
+        return 0;
+    }
+    err_msg(_3TABS "Lost");
+    return 1;
+}
+
+static int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, char *msg) {
+    printf("\n%s: ", msg);
+    if (isPacketLost()) {
+        return -1;
+    }
+    printf(_4TABS "Sent\n");
+    Writen(fd, ptr, nbytes);//, 0, sa, salen);
+    return 1;
+}
+
+static int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
+    int n;
+     while (1) {
+        printf("\n%s: ", msg);
+        n = Read(fd, ptr, nbytes);//, 0, NULL, NULL);
+        if (!isPacketLost()) {
+            break;
+        }
+    }
+    printf(_4TABS "Received\n");
+    return n;
+}
+
 static int handshake(int sockfd, struct sockaddr_in servAddr) {
     TcpPckt packet;
-    unsigned int seqNum = 0;
-    unsigned int ackNum;
-    unsigned int winSize;
+    unsigned int seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD];
-    
-    int newPortNo, n, retransmitCount, len;
+    int newPortNo, retransmitCount, len;
     
     retransmitCount = 0;
     
 send1HSAgain:
     // Send 1st HS
-    fillPckt(&packet, 1, 2, in_receive_win, in_file_name, strlen(in_file_name));
+    seqNum = SYN_SEQ_NO; ackNum = SYN_ACK_SEQ_NO; winSize = in_receive_win;
+    fillPckt(&packet, seqNum, ackNum, winSize, in_file_name, strlen(in_file_name));
 
-    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),&packet, HEADER_LEN+strlen(in_file_name),
-                        "Sending 1st HS");
+    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),&packet,
+            HEADER_LEN+strlen(in_file_name), "Sending 1st HS (SYN)\t");
+    printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
     ++retransmitCount;
 
     // TODO: change alarm to setitimer
@@ -156,56 +151,56 @@ send1HSAgain:
     
     if (sigsetjmp(jmpFor2HS, 1) != 0) {
         if (retransmitCount > MAX_RETRANSMIT) {
-            err_quit("Client Terminated due to Timeout!!");
+            err_quit("Client Terminated due to 12 Timeouts");
         }
         printf(_1TAB "Timeout\n");
         goto send1HSAgain;
     } 
 
     // Receive 2nd HS
-        n = readWithPacketDrops(sockfd, (void *) &packet, 
-                DATAGRAM_SIZE, "Receiving 2nd HS");
-        readPckt(&packet, n, &seqNum, &ackNum, &winSize, recvBuf);
-        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
+    len = readWithPacketDrops(sockfd, (void *) &packet,
+            DATAGRAM_SIZE, "Receiving 2nd HS (SYN-ACK)");
+    readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
+    printf("Seq num: %d\t Ack num: %d\n", seqNum, ackNum);
 
     alarm(0);
     newPortNo = atoi(recvBuf);
 
     // Reconnect to new port number
-    printf("Reconnecting socket to new Port No => %d\n", newPortNo);
+    printf("\nReconnecting socket to new Port No => %d\n", newPortNo);
     servAddr.sin_port = htons(newPortNo);
     Connect(sockfd, (SA *) &servAddr, sizeof(servAddr));
 
-
 send3HSAgain:
     // Send 3rd HS
-    fillPckt(&packet, 3, 11, in_receive_win, NULL, 0);
+    seqNum = ACK_SEQ_NO; ackNum = DATA_SEQ_NO; winSize = in_receive_win;
+    fillPckt(&packet, seqNum, ackNum, winSize, NULL, 0);
 
     writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),
-            &packet, HEADER_LEN, "Sending 3rd HS");
+            &packet, HEADER_LEN, "Sending 3rd HS (ACK)\t");
+    printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
 
-
-
-    n = readWithPacketDrops(sockfd, (void *) &packet,
+    len = readWithPacketDrops(sockfd, (void *) &packet,
             DATAGRAM_SIZE, "Receiving 1st file packet");
-    readPckt(&packet, n, &seqNum, &ackNum, &winSize, recvBuf);
+    readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
 
-    if (seqNum == 2) /* second handshake */
+    // Verify if packet is for 2HS or 1st file packet
+    if (seqNum == SYN_ACK_SEQ_NO) {
+        printf("Seq num: %d\t Ack num: %d\t(2 HS from Server)\n", seqNum, ackNum);
         goto send3HSAgain;
+    }
+    printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
+    printf("Data Contents:\n%s\n", recvBuf);
 
-    // else its first packet of file transfer
-    // Invoke producer and consumer threads
-
-    printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
-    printf("%s\n",recvBuf);
+    // Initialize Receiving Buffer and Invoke producer and consumer threads
     
-    do {
-        len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE, "Receiving next file packet");
+    while (len == DATAGRAM_SIZE) {
+        len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
+                "Receiving next file packet");
         readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
-        printf("%s\n",recvBuf);
-    } while(len == DATAGRAM_SIZE);
-
+        printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
+        printf("Data Contents:\n%s\n", recvBuf);
+    }
 }
 
 int main() {

@@ -13,8 +13,8 @@ CFLAGS = ${FLAGS} -I${HOME}/lib
 
 all: client server
 
-server: server.o common.o
-	${CC} ${FLAGS} -o server server.o common.o ${LIBS}
+server: server.o common.o rtt.o
+	${CC} ${FLAGS} -o server server.o common.o rtt.o ${LIBS}
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
 
@@ -25,6 +25,8 @@ client.o: client.c
 
 common.o: common.c
 	${CC} ${CFLAGS} -c common.c
+rtt.o: rtt.c
+	${CC} ${CFLAGS} -c rtt.c
 
 clean:
 	rm -f server client *.o

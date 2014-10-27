@@ -24,7 +24,7 @@ static void sig_child(int signo) {
             else 
                 prev = cur->next;
 
-            printf("Child deleted with Pid : %d\n", pid);
+            printf("\nChild deleted with Pid: %d\n", pid);
             free(cur);
             return;
         }
@@ -40,7 +40,7 @@ static int initializeParams() {
     FILE *inp_file = fopen(SERVER_IN, "r");
 
     if (inp_file == NULL) {
-        err_quit("Unknown server argument file : '%s'\n", SERVER_IN);
+        err_quit("Unknown server argument file: '%s'\n", SERVER_IN);
     }
     in_port_no = getIntParamValue(inp_file);
     in_window_size = getIntParamValue(inp_file);
@@ -110,14 +110,14 @@ static void sig_alarm(int signo) {
 }
 
 
-int getNextPacket(TcpPckt *pckt, unsigned int seq, unsigned int ack, unsigned int winSize, int fd) {
+static int getNextPacket(TcpPckt *pckt, unsigned int seq, unsigned int ack, unsigned int winSize, int fd) {
     char buf[MAX_PAYLOAD];
     int ret = 0;
     int n = Read(fd, buf, MAX_PAYLOAD);
 
     //int len = MAX_PAYLOAD; //TODO How to calculate
     fillPckt(pckt, seq, ack, winSize, buf, n);
-    return n;
+    return n + HEADER_LEN;
 }
 
 static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_sock,
@@ -184,8 +184,8 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 
     send2HSAgain:
         // Send second handshake
-        fillPckt(&packet, 2, 3, in_window_size, sendBuf, MAX_PAYLOAD);
-        printf("Second HS sent from Listening Socket : New Conn Port No => %s\n", packet.data);
+        fillPckt(&packet, SYN_ACK_SEQ_NO, ACK_SEQ_NO, 0, sendBuf, MAX_PAYLOAD);
+        printf("\nSecond HS sent from Listening Socket: New Conn Port No => %s\n", packet.data);
         Sendto(sock_fd[req_sock], &packet, DATAGRAM_SIZE, 0, (SA *) &cliaddr, sizeof(cliaddr));
 
         if (send2HSFromConnFd) {
@@ -199,7 +199,8 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         if (sigsetjmp(jmpbuf, 1) != 0) {
             printf(_3TABS "Timeout!\n");
             if (rtt_timeout(&rttInfo)) {
-                err_quit("Server Child Terminated due to 12 Timeouts");
+                err_msg("Server Child Terminated due to 12 Timeouts");
+                goto error;
             }
             send2HSFromConnFd = 1;
             goto send2HSAgain;
@@ -207,31 +208,39 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 
         // Receive third Handshake
         len = Recvfrom(connFd, &packet, MAXLINE, 0,  NULL, NULL);
-        readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
         alarm(0);
         rtt_stop(&rttInfo);
-        printf("Third HS received : ACK => %s\n", recvBuf);
-        
+
+        readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
+        printf("\nThird HS received: Connection Establised Successfully\n");
+        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
         // Connect to Client request
         Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
 
-        FILE *fp;
-        
-        char path[] ="data.file";
-        fp = Fopen(path ,"r");
-        int fd = fileno(fp);
+        int fd;
+        if ((fd = open(fileName, O_RDONLY)) == -1) {
+            err_msg("Server Child Terminated due to Invalid FileName");
+            goto error;
+        }
+
         /* Ack becomes the seq no of the next packet
          * seqNum = ackNum
          */
-        seqNum = ackNum-1; //TODO: Correctly update sequence number and Ack number
+        seqNum = ackNum;
 
-        while ((len = getNextPacket(&packet, ++seqNum, ++ackNum, winSize, fd)) > 0) {
-            Writen(connFd,(void *) &packet, HEADER_LEN + len);
-            printf("Bytes sent: %d\n", len);
+        while ((len = getNextPacket(&packet, seqNum, 0, 0, fd)) >= HEADER_LEN) {
+            Writen(connFd, (void *) &packet, len);
+            printf("\nPacket Sent =>\t Seq num: %d\t Total Bytes: %d\n", seqNum, len);
+            seqNum++;
+
+            if (len != DATAGRAM_SIZE)
+                break;
         }
+
+error:
+        // TODO: Send a FIN packet to child
 
         Close(sock_fd[req_sock]);
 
@@ -282,7 +291,6 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
         
                 n = Recvfrom(sockfd[i], &packet, MAXLINE, 0, (SA *)&cliaddr, &len);
                 readPckt(&packet, n, &seqNum, &ackNum, &winSize, recvBuf);
-                printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
                 if (searchAndUpdateClientList(cliaddr) != NULL) {
                     int isLocal = verifyIfLocalAndGetHostIP(ifihead, &cliaddr.sin_addr, NULL);
@@ -290,7 +298,8 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
                     printf("\nNew request from client %son Local Interface => %s\n",
                             isLocal == 0 ? "Not " : "",
                             Sock_ntop((SA *) &cliaddr, sizeof(struct sockaddr_in)));
-                    printf("First HS received : fileName => %s\n", recvBuf);
+                    printf("First HS received: fileName => %s\n", recvBuf);
+                    printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
                     // Block SIGCHLD until parent sets child pid in client_request list
                     sigprocmask(SIG_BLOCK, &sigset, NULL);
@@ -310,7 +319,6 @@ int main() {
     
     // Get all interfaces
     ifihead = Get_ifi_info_plus(AF_INET, 1/*doalias*/);
-    printf("\nFollowing are different Interfaces:\n");
     totalIP = print_ifi_info_plus(ifihead);
 
     sockfd = bindAllInterfaces(ifihead, totalIP);

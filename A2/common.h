@@ -5,27 +5,31 @@
 #include "unp.h"
 #include "unpifiplus.h"
 
-#define SERVER_IN       "server.in"
-#define CLIENT_IN       "client.in"
-#define PARAM_SIZE      100
-#define MAX_RETRANSMIT  12
-#define MAX_PAYLOAD 500 // bytes
-#define HEADER_LEN 12 // bytes
-#define DATAGRAM_SIZE 512
-
-
-typedef struct {
-    unsigned int seqNum; // 32 bits
-    unsigned int ackNum; // 32 bits
-    unsigned int winSize; // 32 bits
-    char data[MAX_PAYLOAD]; // max 500
-}TcpPckt; // Total size: 512
-
-
 #define _1TAB    "\t"
 #define _2TABS   "\t\t"
 #define _3TABS   "\t\t\t"
 #define _4TABS   "\t\t\t\t"
+
+#define SERVER_IN       "server.in"
+#define CLIENT_IN       "client.in"
+#define PARAM_SIZE      100
+#define MAX_RETRANSMIT  12
+
+#define HEADER_LEN      12
+#define MAX_PAYLOAD     500
+#define DATAGRAM_SIZE   512
+
+#define SYN_SEQ_NO      1
+#define SYN_ACK_SEQ_NO  2
+#define ACK_SEQ_NO      3
+#define DATA_SEQ_NO     11
+
+typedef struct {
+    unsigned int seqNum;    // 4 bytes
+    unsigned int ackNum;    // 4 bytes
+    unsigned int winSize;   // 4 bytes
+    char data[MAX_PAYLOAD]; // 500 bytes
+} TcpPckt;                  // Total size: 512
 
 char* getStringParamValue(FILE *inp_file, char *paramVal);
 int getIntParamValue(FILE *inp_file);
@@ -37,6 +41,9 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
                               struct in_addr *host_ip);
 
 
-int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned int winSize, char* dataPtr, int len);
-int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum, unsigned int *ackNum, unsigned int *winSize, char* dataPtr); 
+int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
+        unsigned int winSize, char* dataPtr, int len);
+int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum,
+        unsigned int *ackNum, unsigned int *winSize, char* dataPtr);
+
 #endif /* !_COMMON_H */

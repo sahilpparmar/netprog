@@ -2,7 +2,6 @@
  * common.c - contains common code between client and server
  *
  ***/
-//TODO Write macros for manipulating packets 
 #include "unp.h"
 #include "unpifiplus.h"
 #include "common.h"
@@ -81,13 +80,9 @@ int print_ifi_info_plus(struct ifi_info *ifihead) {
             printf("    IP addr: %s\n",
                     Sock_ntop_host(sa, sizeof(*sa)));
 
-        /*=================== cse 533 Assignment 2 modifications ======================*/
-
         if ((sa = ifi->ifi_ntmaddr) != NULL)
             printf("    network mask: %s\n",
                     Sock_ntop_host(sa, sizeof(*sa)));
-
-        /*=============================================================================*/
 
         if ((sa = ifi->ifi_brdaddr) != NULL)
             printf("    broadcast addr: %s\n",
@@ -98,6 +93,7 @@ int print_ifi_info_plus(struct ifi_info *ifihead) {
 
         num++;
     }
+    printf("\n");
 
     return num;
 }
@@ -152,7 +148,8 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
     return isLocal;
 }
 
-int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned int winSize, char* dataPtr, int len) {
+int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
+            unsigned int winSize, char* dataPtr, int len) {
     packet->seqNum = seqNum;
     packet->ackNum = ackNum;
     packet->winSize = winSize;
@@ -161,14 +158,15 @@ int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum, unsigned
         return 0;
     }
     if (memcpy((void *)&(packet->data), (const void *) dataPtr, (size_t) len) == NULL) {
-        printf("Error detected in memcpy while reading packet \n");
+        printf("Error detected in memcpy while reading packet\n");
         return -1;
     }
     else
         return 0;
 }
 
-int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum, unsigned int *ackNum, unsigned int *winSize, char* dataPtr) {
+int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum,
+            unsigned int *ackNum, unsigned int *winSize, char* dataPtr) {
     *seqNum = packet->seqNum; 
     *ackNum = packet->ackNum;
     *winSize = packet->winSize;
