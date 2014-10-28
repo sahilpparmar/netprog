@@ -59,13 +59,27 @@ void initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSiz
     addPacketToRecWin(RecWinQ, firstPacket, packetSize-HEADER_LEN);
 }
 
+// Used by client to send Acks
+void sendAck(RecWinQueue *RecWinQ, int fd) { 
+    char buf[ACK_PRINT_BUFF];
+    TcpPckt packet;
+    
+    sprintf(buf, "Sending Ack No %d\t", RecWinQ->nextSeqExpected);
+    
+    fillPckt(&packet, CLI_SEQ_NO, RecWinQ->nextSeqExpected,
+        RecWinQ->advertisedWin, NULL, 0); //No data
+
+    writeWithPacketDrops(fd, NULL, 0, &packet, HEADER_LEN, buf);
+
+}
+
 int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, char *msg) {
     printf("\n%s: ", msg);
     if (isPacketLost()) {
         return -1;
     }
     printf(KGRN _4TABS "Sent\n" RESET);
-    Writen(fd, ptr, nbytes);//, 0, sa, salen);
+    Writen(fd, ptr, nbytes);//TODO , 0, sa, salen);
     return 1;
 }
 
@@ -89,6 +103,7 @@ int fileTransfer(int sockfd, RecWinQueue *RecWinQ) {
     int len;
 
     // TODO: Invoke producer and consumer threads
+
     while (1) {
         len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
                 "Receiving next file packet");

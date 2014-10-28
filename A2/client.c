@@ -159,10 +159,10 @@ send3HSAgain:
     }
     printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
     printf("Data Contents:\n%s\n", recvBuf);
-    // TODO: Send an ACK
 
     // Initialize Receiving Window
     initializeRecWinQ(RecWinQ, &packet, len, in_receive_win);
+    sendAck(RecWinQ, sockfd);
 }
 
 int main() {

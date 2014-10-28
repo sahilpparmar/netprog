@@ -17,6 +17,8 @@
 #define KMAG  "\x1B[35m"
 #define RESET "\033[0m"
 
+#define ACK_PRINT_BUFF 50
+
 #define SERVER_IN       "server.in"
 #define CLIENT_IN       "client.in"
 #define PARAM_SIZE      100
@@ -32,6 +34,8 @@
 #define FIN_SEQ_NO      4
 #define FIN_ACK_SEQ_NO  5
 #define DATA_SEQ_NO     11
+
+#define CLI_SEQ_NO      0
 
 typedef struct {
     unsigned int seqNum;        // 4 bytes

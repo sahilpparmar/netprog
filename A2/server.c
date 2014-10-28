@@ -225,6 +225,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         seqNum = ackNum;
 
         while ((len = getNextPacket(&packet, seqNum, 0, 0, fd)) >= HEADER_LEN) {
+            sleep(1); //TODO remove
             Writen(connFd, (void *) &packet, len);
             printf("\nPacket Sent =>\t Seq num: %d\t Total Bytes: %d\n", seqNum, len);
             seqNum++;
