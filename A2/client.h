@@ -18,6 +18,7 @@ typedef struct rec_window_queue {
 } RecWinQueue;
 
 extern float in_packet_loss;
+extern int in_read_delay;
 int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, char *msg);
 int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg);
 

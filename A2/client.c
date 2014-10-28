@@ -6,7 +6,7 @@ static char  in_file_name[PARAM_SIZE];     // FileName to be transfered
 static int   in_receive_win;               // Size of receiving sliding window
 static int   in_random_seed;               // Random Gen Seed Value
 float        in_packet_loss;               // Probability of packet loss
-static int   in_read_delay;                // mean millisec at which client reads data from receving window
+int   in_read_delay;                // mean millisec at which client reads data from receving window
 
 static void parseClientParams() {
     FILE *inp_file = fopen(CLIENT_IN, "r");

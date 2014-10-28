@@ -1,6 +1,7 @@
 #include "client.h"
 #include "unpthread.h"
 #include "assert.h"
+#include "math.h"
 
 struct prodConsArg{
     int *sockfd;
@@ -154,7 +155,6 @@ void *producerFunction(void *arg) {
         }
         sendAck(RecWinQ, sockfd);
     } 
-    //TODO Logic for Fin-Ack
     sendFinAck(RecWinQ, sockfd);
 }
 
@@ -169,10 +169,14 @@ void *consumerFunction(void *arg) {
 
 
     //TODO Logic for randomly sleeping 
-    int sleepTime = 2;
+    float sleepTime = 2;
     
     while(1) {
+
+        sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
+        printf("Consumer Going to sleep for %f\n",sleepTime);
         sleep(sleepTime);
+
         while((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)){
             assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum)) == 1);
             int wIndex =GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum); 
