@@ -17,7 +17,7 @@ static void sig_child(int signo) {
             else 
                 prev = cur->next;
 
-            printf("\nChild deleted with Pid: %d\n", pid);
+            printf(KRED "\nChild deleted" RESET "Pid: %d\n", pid);
             free(cur);
             return;
         }
@@ -177,11 +177,11 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
     send2HSAgain:
         // Send second handshake
         fillPckt(&packet, SYN_ACK_SEQ_NO, ACK_SEQ_NO, 0, sendBuf, MAX_PAYLOAD);
-        printf("\nSecond HS sent from Listening Socket: New Conn Port No => %s\n", packet.data);
+        printf(KYEL "\nSecond HS sent from Listening Socket:" RESET "New Conn Port No => %s\n" , packet.data);
         Sendto(sock_fd[req_sock], &packet, DATAGRAM_SIZE, 0, (SA *) &cliaddr, sizeof(cliaddr));
 
         if (send2HSFromConnFd) {
-            printf("Second HS sent from Conn Socket: New Conn Port No => %s\n", packet.data);
+            printf(KYEL "Second HS sent from Conn Socket: New Conn Port No => %s" RESET "\n", packet.data);
             Sendto(connFd, &packet, DATAGRAM_SIZE, 0, (SA *) &cliaddr, sizeof(cliaddr));
         }
         
@@ -189,7 +189,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         alarm(rtt_start(&rttInfo)/1000);
 
         if (sigsetjmp(jmpbuf, 1) != 0) {
-            printf(_3TABS "Timeout!\n");
+            printf(KYEL _3TABS "Timeout!\n" RESET);
             if (rtt_timeout(&rttInfo)) {
                 char *str = "Server Child Terminated due to 12 Timeouts";
                 err_msg(str);
@@ -207,7 +207,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         rtt_stop(&rttInfo);
 
         readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        printf("\nThird HS received: Connection Establised Successfully\n");
+        printf("\nThird HS received:" KGRN "Connection Establised Successfully\n" RESET);
         printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
         // Connect to Client request
@@ -293,7 +293,7 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
                     printf("\nNew request from client %son Local Interface => %s\n",
                             isLocal == 0 ? "Not " : "",
                             Sock_ntop((SA *) &cliaddr, sizeof(struct sockaddr_in)));
-                    printf("First HS received: fileName => %s\n", recvBuf);
+                    printf(KGRN "First HS received: fileName => %s\n" RESET, recvBuf);
                     printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
                     // Block SIGCHLD until parent sets child pid in ClientRequest list

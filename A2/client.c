@@ -121,7 +121,7 @@ send1HSAgain:
         if (retransmitCount > MAX_RETRANSMIT) {
             err_quit("Client Terminated due to 12 Timeouts");
         }
-        printf(_1TAB "Timeout\n");
+        printf(KRED _1TAB "Timeout\n" RESET);
         goto send1HSAgain;
     } 
 
@@ -154,7 +154,7 @@ send3HSAgain:
 
     // Verify if packet is for 2HS or 1st file packet
     if (seqNum == SYN_ACK_SEQ_NO) {
-        printf("Seq num: %d\t Ack num: %d\t(2HS from Server)\n", seqNum, ackNum);
+        printf(KGRN "Seq num: %d\t Ack num: %d\t(2HS from Server)\n" RESET, seqNum, ackNum);
         goto send3HSAgain;
     }
     printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);

@@ -10,6 +10,13 @@
 #define _3TABS   "\t\t\t"
 #define _4TABS   "\t\t\t\t"
 
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define RESET "\033[0m"
+
 #define SERVER_IN       "server.in"
 #define CLIENT_IN       "client.in"
 #define PARAM_SIZE      100

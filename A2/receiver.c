@@ -6,7 +6,7 @@ static int isPacketLost() {
     if (rval > in_packet_loss) {
         return 0;
     }
-    err_msg(_3TABS "Lost");
+    err_msg(KRED _3TABS "Lost" RESET);
     return 1;
 }
 
@@ -22,7 +22,7 @@ static void printRecWinNode(RecWinQueue *RecWinQ, int ind) {
 
 static void printRecWindow(RecWinQueue *RecWinQ) {
     int i;
-    printf("Receving Window =>\t");
+    printf(KBLU "Receving Window =>\t");
     printf("Advertised WinSize: %d\t Contents:", RecWinQ->advertisedWin);
     for (i = 0; i < RecWinQ->winSize; i++) {
         if (IS_PRESENT(RecWinQ, i))
@@ -30,7 +30,7 @@ static void printRecWindow(RecWinQueue *RecWinQ) {
         else
             printf(" x");
     }
-    printf("\n");
+    printf( RESET "\n");
 }
 
 static RecWinNode* addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int dataSize) {
@@ -64,7 +64,7 @@ int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, ch
     if (isPacketLost()) {
         return -1;
     }
-    printf(_4TABS "Sent\n");
+    printf(KGRN _4TABS "Sent\n" RESET);
     Writen(fd, ptr, nbytes);//, 0, sa, salen);
     return 1;
 }
@@ -78,7 +78,7 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
             break;
         }
     }
-    printf(_4TABS "Received\n");
+    printf(KGRN _4TABS "Received\n" RESET);
     return n;
 }
 
