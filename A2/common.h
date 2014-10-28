@@ -1,6 +1,7 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
+#include <assert.h>
 #include <setjmp.h>
 #include "unp.h"
 #include "unpifiplus.h"
@@ -37,10 +38,17 @@
 
 #define CLI_SEQ_NO      0
 
+#define GET_INDEX(winQ, seqNum) ((seqNum)%(winQ->winSize))
+#define GET_WNODE(winQ, seqNum) (&(winQ->wnode[GET_INDEX(winQ, seqNum)]))
+#define IS_PRESENT(winQ, ind) (winQ->wnode[ind].isPresent)
+#define GET_PACKET(winQ, ind) (&(winQ->wnode[ind].packet))
+#define GET_SEQ_NUM(winQ, ind) (GET_PACKET(winQ, ind)->seqNum)
+#define GET_DATA_SIZE(winQ, ind) (winQ->wnode[ind].dataSize)
+
 typedef struct {
-    unsigned int seqNum;        // 4 bytes
-    unsigned int ackNum;        // 4 bytes
-    unsigned int winSize;       // 4 bytes
+    uint32_t seqNum;        // 4 bytes
+    uint32_t ackNum;        // 4 bytes
+    uint32_t winSize;       // 4 bytes
     char data[MAX_PAYLOAD+1];   // 500 bytes
 } TcpPckt;                      // Total size: 512
 
@@ -53,9 +61,9 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
                               struct in_addr *remote_ip,
                               struct in_addr *host_ip);
 
-int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
-        unsigned int winSize, char* dataPtr, int len);
-int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum,
-        unsigned int *ackNum, unsigned int *winSize, char* dataPtr);
+int fillPckt(TcpPckt *packet, uint32_t seqNum, uint32_t ackNum,
+        uint32_t winSize, char* dataPtr, int len);
+int readPckt(TcpPckt *packet, int packet_size, uint32_t *seqNum,
+        uint32_t *ackNum, uint32_t *winSize, char* dataPtr);
 
 #endif /* !_COMMON_H */

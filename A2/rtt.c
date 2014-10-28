@@ -54,11 +54,6 @@ rtt_ts(struct rtt_info *ptr) {
     return(ts);
 }
 
-void
-rtt_newpack(struct rtt_info *ptr) {
-    ptr->rtt_nrexmt = 0;
-}
-
 int
 rtt_start(struct rtt_info *ptr) {
     return ptr->rtt_rto;
@@ -77,11 +72,11 @@ rtt_start(struct rtt_info *ptr) {
 
 /* include rtt_stop */
 void
-rtt_stop(struct rtt_info *ptr) {
+rtt_stop(struct rtt_info *ptr, uint32_t lastTimeStamp) {
     int delta;
 
     /* measured RTT in seconds */
-    ptr->rtt_rtt = rtt_ts(ptr);
+    ptr->rtt_rtt = rtt_ts(ptr) - lastTimeStamp;
 
     /*
      * Update our estimators of RTT and mean deviation of RTT.
@@ -112,12 +107,12 @@ rtt_stop(struct rtt_info *ptr) {
 
 /* include rtt_timeout */
 int
-rtt_timeout(struct rtt_info *ptr) {
+rtt_timeout(struct rtt_info *ptr, uint32_t retransmitCnt) {
     /* next RTO */
     ptr->rtt_rto = rtt_minmax(ptr->rtt_rto * 2);
     rtt_debug(ptr);
 
-    if (++ptr->rtt_nrexmt > RTT_MAXNREXMT)
+    if (retransmitCnt > RTT_MAXNREXMT)
         return(-1);			/* time to give up for this packet */
     return(0);
 }

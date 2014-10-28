@@ -13,10 +13,12 @@ CFLAGS = ${FLAGS} -I${HOME}/lib -I/home/courses/cse533/Asgn2_code/
 
 all: client server
 
-server: server.o common.o get_ifi_info_plus.o
-	${CC} ${FLAGS} -o server server.o common.o get_ifi_info_plus.o ${LIBS}
+server: server.o common.o get_ifi_info_plus.o sender.o rtt.o
+	${CC} ${FLAGS} -o server server.o common.o get_ifi_info_plus.o sender.o rtt.o ${LIBS}
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
+sender.o: sender.c
+	${CC} ${CFLAGS} -c sender.c
 rtt.o: rtt.c
 	${CC} ${CFLAGS} -c rtt.c
 

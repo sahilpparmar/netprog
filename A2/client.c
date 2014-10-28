@@ -97,7 +97,7 @@ static void sig_alarm(int signo) {
 
 static int handshake(int sockfd, struct sockaddr_in servAddr, RecWinQueue *RecWinQ) {
     TcpPckt packet;
-    unsigned int seqNum, ackNum, winSize;
+    uint32_t seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
     int newPortNo, retransmitCount, len;
     
@@ -121,7 +121,7 @@ send1HSAgain:
         if (retransmitCount > MAX_RETRANSMIT) {
             err_quit("Client Terminated due to 12 Timeouts");
         }
-        printf(KRED _1TAB "Timeout\n" RESET);
+        printf(KRED _4TABS "Timeout\n" RESET);
         goto send1HSAgain;
     } 
 

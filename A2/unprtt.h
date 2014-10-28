@@ -6,7 +6,6 @@ struct rtt_info {
     int	        rtt_srtt;   /* smoothed RTT estimator, in msec */
     int         rtt_rttvar; /* smoothed mean deviation, in msec */
     int         rtt_rto;    /* current RTO to use, in msec */
-    int         rtt_nrexmt; /* # times retransmitted: 0, 1, 2, ... */
     uint32_t    rtt_base;   /* # sec since 1/1/1970 at start */
 };
 
@@ -18,10 +17,9 @@ struct rtt_info {
 
 void    rtt_debug(struct rtt_info *);
 void    rtt_init(struct rtt_info *);
-void    rtt_newpack(struct rtt_info *);
 int     rtt_start(struct rtt_info *);
-void    rtt_stop(struct rtt_info *);
-int     rtt_timeout(struct rtt_info *);
+void    rtt_stop(struct rtt_info *, uint32_t);
+int     rtt_timeout(struct rtt_info *, uint32_t);
 uint32_t    rtt_ts(struct rtt_info *);
 
 /* can be set to nonzero for addl info */

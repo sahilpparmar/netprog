@@ -13,10 +13,12 @@ CFLAGS = ${FLAGS} -I${HOME}/lib
 
 all: client server
 
-server: server.o common.o rtt.o
-	${CC} ${FLAGS} -o server server.o common.o rtt.o ${LIBS}
+server: server.o common.o sender.o rtt.o
+	${CC} ${FLAGS} -o server server.o common.o sender.o rtt.o ${LIBS}
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
+sender.o: sender.c
+	${CC} ${CFLAGS} -c sender.c
 rtt.o: rtt.c
 	${CC} ${CFLAGS} -c rtt.c
 

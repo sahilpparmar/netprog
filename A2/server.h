@@ -4,6 +4,9 @@
 #include "common.h"
 #include "unprtt.h"
 
+#define GET_OLDEST_SEQ_IND(sendWinQ) (sendWinQ->oldestSeqNum%sendWinQ->winSize)
+#define GET_OLDEST_SEQ_WNODE(sendWinQ) (&(sendWinQ->wnode[GET_OLDEST_SEQ_IND(sendWinQ)]))
+
 typedef struct client_request {
     struct sockaddr_in cliaddr;
     pid_t childpid;
@@ -12,9 +15,10 @@ typedef struct client_request {
 
 typedef struct send_window_node {
     TcpPckt packet;         // Sending Packet
+    int dataSize;           // Length of data in packet
     int isPresent;          // If any packet is present at this node
     int numOfRetransmits;   // Number of retransmissions
-    //timestamp ???
+    uint32_t timestamp;     // Timestamp of packet
 } SendWinNode;
 
 typedef struct send_window_queue {
@@ -26,6 +30,8 @@ typedef struct send_window_queue {
     int ssfresh;
 } SendWinQueue;
 
-
+void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum);
+void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rttInfo);
+void terminateConnection(int connFd, char *errMsg);
 
 #endif /* !_SERVER_H */

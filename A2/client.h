@@ -3,12 +3,6 @@
 
 #include "common.h"
 
-#define GET_INDEX(winQ, packet) ((packet->seqNum)%(winQ->winSize))
-#define GET_WNODE(winQ, packet) (&(winQ->wnode[GET_INDEX(winQ, packet)]))
-#define IS_PRESENT(winQ, ind) (winQ->wnode[ind].isPresent)
-#define GET_PACKET(winQ, ind) (&(winQ->wnode[ind].packet))
-#define GET_SEQ_NUM(winQ, ind) (GET_PACKET(winQ, ind)->seqNum)
-
 typedef struct rec_window_node {
     TcpPckt packet;         // Packet received
     int dataSize;           // Length of data in packet

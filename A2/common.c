@@ -148,8 +148,8 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
     return isLocal;
 }
 
-int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
-            unsigned int winSize, char* dataPtr, int len) {
+int fillPckt(TcpPckt *packet, uint32_t seqNum, uint32_t ackNum,
+            uint32_t winSize, char* dataPtr, int len) {
     packet->seqNum = seqNum;
     packet->ackNum = ackNum;
     packet->winSize = winSize;
@@ -161,20 +161,22 @@ int fillPckt(TcpPckt *packet, unsigned int seqNum, unsigned int ackNum,
         printf("Error detected in memcpy while reading packet\n");
         return -1;
     }
-    dataPtr[MAX_PAYLOAD] = '\0';
+    packet->data[MAX_PAYLOAD] = '\0';
     return HEADER_LEN + len;
 }
 
-int readPckt(TcpPckt *packet, int packet_size, unsigned int *seqNum,
-            unsigned int *ackNum, unsigned int *winSize, char* dataPtr) {
-    *seqNum = packet->seqNum; 
-    *ackNum = packet->ackNum;
-    *winSize = packet->winSize;
-    if (memcpy((void *)dataPtr, (const void *)packet->data, packet_size-HEADER_LEN) == NULL) {
-        printf("Error detected in memcpy while reading packet \n");
-        return -1;
+int readPckt(TcpPckt *packet, int packet_size, uint32_t *seqNum,
+            uint32_t *ackNum, uint32_t *winSize, char* dataPtr) {
+    if (seqNum  != NULL) *seqNum = packet->seqNum;
+    if (ackNum  != NULL) *ackNum = packet->ackNum;
+    if (winSize != NULL) *winSize = packet->winSize;
+    if (dataPtr != NULL) {
+        if (memcpy((void *)dataPtr, (const void *)packet->data, packet_size-HEADER_LEN) == NULL) {
+            printf("Error detected in memcpy while reading packet \n");
+            return -1;
+        }
+        dataPtr[packet_size - HEADER_LEN] = '\0';
     }
-    dataPtr[packet_size - HEADER_LEN] = '\0';
     return 0;
 }
 

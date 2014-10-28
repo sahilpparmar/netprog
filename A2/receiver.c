@@ -6,7 +6,7 @@ static int isPacketLost() {
     if (rval > in_packet_loss) {
         return 0;
     }
-    err_msg(KRED _3TABS "Lost" RESET);
+    err_msg(KRED _4TABS "Dropped" RESET);
     return 1;
 }
 
@@ -23,7 +23,8 @@ static void printRecWinNode(RecWinQueue *RecWinQ, int ind) {
 static void printRecWindow(RecWinQueue *RecWinQ) {
     int i;
     printf(KBLU "Receving Window =>\t");
-    printf("Advertised WinSize: %d\t Contents:", RecWinQ->advertisedWin);
+    printf("Next Expected Seq No: %d    Advertised WinSize: %d    Contents:",
+            RecWinQ->nextSeqExpected, RecWinQ->advertisedWin);
     for (i = 0; i < RecWinQ->winSize; i++) {
         if (IS_PRESENT(RecWinQ, i))
             printf(" %d", GET_SEQ_NUM(RecWinQ, i));
@@ -33,27 +34,38 @@ static void printRecWindow(RecWinQueue *RecWinQ) {
     printf( RESET "\n");
 }
 
-static RecWinNode* addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int dataSize) {
-    RecWinNode *wnode = GET_WNODE(RecWinQ, packet);
+static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int dataSize) {
+    RecWinNode *wnode = GET_WNODE(RecWinQ, packet->seqNum);
+
+    if (wnode->isPresent) {
+        assert((wnode->packet.seqNum == packet->seqNum) && "Invalid packet seq num");
+        printRecWindow(RecWinQ);
+        return 0;
+    }
+
     fillPckt(&wnode->packet, packet->seqNum, packet->ackNum, packet->winSize, packet->data, dataSize);
     wnode->dataSize = dataSize;
     wnode->isPresent = 1;
 
     if (RecWinQ->nextSeqExpected == packet->seqNum) {
-        RecWinQ->nextSeqExpected++;
-        RecWinQ->advertisedWin--;
+        int wInd;
+        do {
+            RecWinQ->nextSeqExpected++;
+            RecWinQ->advertisedWin--;
+            wInd = GET_INDEX(RecWinQ, RecWinQ->nextSeqExpected); 
+        } while ((IS_PRESENT(RecWinQ, wInd)) && (GET_SEQ_NUM(RecWinQ, wInd) == RecWinQ->nextSeqExpected));
     }
 
     printRecWindow(RecWinQ);
-    return wnode;
+    return 1;
 }
 
 void initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize) {
     RecWinQ->wnode           = (RecWinNode*) calloc(recWinSize, sizeof(RecWinNode));
     RecWinQ->winSize         = recWinSize;
     RecWinQ->advertisedWin   = recWinSize;
-    RecWinQ->nextSeqExpected = firstPacket->seqNum;
-    RecWinQ->consumerSeqNum  = firstPacket->seqNum;
+    RecWinQ->nextSeqExpected = DATA_SEQ_NO;
+    RecWinQ->consumerSeqNum  = DATA_SEQ_NO;
 
     // Add first packet in receving window
     addPacketToRecWin(RecWinQ, firstPacket, packetSize-HEADER_LEN);
@@ -98,7 +110,7 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
 
 int fileTransfer(int sockfd, RecWinQueue *RecWinQ) {
     TcpPckt packet;
-    unsigned int seqNum, ackNum, winSize;
+    uint32_t seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
     int len;
 
@@ -113,11 +125,14 @@ int fileTransfer(int sockfd, RecWinQueue *RecWinQ) {
             // TODO: Check for errors and report
             break;
         }
-        addPacketToRecWin(RecWinQ, &packet, len);
         printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
-        printf("Data Contents:\n%s\n", recvBuf);
+        if (addPacketToRecWin(RecWinQ, &packet, len) == 1) {
+            printf("Data Contents:\n%s\n", recvBuf);
+        } else {
+            printf("Duplicate packet received\n");
+        }
 
-        // TODO: Send an ACK
+        sendAck(RecWinQ, sockfd);
     } 
 
     // TODO: Send a FIN-ACK
