@@ -52,6 +52,7 @@ int print_ifi_info_plus(struct ifi_info *ifihead) {
     u_char          *ptr;
     int             i, num;
 
+    printf("\nFollowing are different Interfaces: \n");
     for (num = 0, ifi = ifihead; ifi != NULL; ifi = ifi->ifi_next) {
         printf("  %s: ", ifi->ifi_name);
         if (ifi->ifi_index != 0)

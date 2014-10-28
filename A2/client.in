@@ -2,6 +2,6 @@
 5445      // Server PortNo
 data.file // FileName to be transfered
 10         // Size of receiving sliding window
-9         // Random Gen Seed Value
-0.50      // Probability of packet loss
+19         // Random Gen Seed Value
+0.5      // Probability of packet loss
 20        // mean millisec at which client reads data from receving window
