@@ -158,7 +158,7 @@ send3HSAgain:
         goto send3HSAgain;
     }
     printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
-    printf("Data Contents:\n%s\n", recvBuf);
+    printf("New Packet received\n");
 
     // Initialize Receiving Window
     initializeRecWinQ(RecWinQ, &packet, len, in_receive_win);
@@ -203,7 +203,7 @@ int main() {
     handshake(sockfd, servAddr, &RecWinQ);
 
     // Begin file transfer
-    fileTransfer(sockfd, &RecWinQ);
+    fileTransfer(&sockfd, &RecWinQ);
 
     return 0;
 }

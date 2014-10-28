@@ -22,6 +22,6 @@ int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, ch
 int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg);
 
 void initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize);
-int fileTransfer(int sockfd, RecWinQueue *RecWinQ);
+int fileTransfer(int *sockfd, RecWinQueue *RecWinQ);
 
 #endif /* !_CLIENT_H */

@@ -1,3 +1,4 @@
+
 #include "client.h"
 #include "unpthread.h"
 #include "assert.h"
@@ -13,7 +14,7 @@ static int isPacketLost() {
     if (rval > in_packet_loss) {
         return 0;
     }
-    err_msg(KRED _4TABS "Dropped" RESET);
+    err_msg(KRED _3TABS "Lost" RESET);
     return 1;
 }
 
@@ -30,8 +31,7 @@ static void printRecWinNode(RecWinQueue *RecWinQ, int ind) {
 static void printRecWindow(RecWinQueue *RecWinQ) {
     int i;
     printf(KBLU "Receving Window =>\t");
-    printf("Next Expected Seq No: %d    Advertised WinSize: %d    Contents:",
-            RecWinQ->nextSeqExpected, RecWinQ->advertisedWin);
+    printf("Advertised WinSize: %d\t Contents:", RecWinQ->advertisedWin);
     for (i = 0; i < RecWinQ->winSize; i++) {
         if (IS_PRESENT(RecWinQ, i))
             printf(" %d", GET_SEQ_NUM(RecWinQ, i));
@@ -41,38 +41,27 @@ static void printRecWindow(RecWinQueue *RecWinQ) {
     printf( RESET "\n");
 }
 
-static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int dataSize) {
-    RecWinNode *wnode = GET_WNODE(RecWinQ, packet->seqNum);
-
-    if (wnode->isPresent) {
-        assert((wnode->packet.seqNum == packet->seqNum) && "Invalid packet seq num");
-        printRecWindow(RecWinQ);
-        return 0;
-    }
-
+static RecWinNode* addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int dataSize) {
+    RecWinNode *wnode = GET_WNODE(RecWinQ, packet);
     fillPckt(&wnode->packet, packet->seqNum, packet->ackNum, packet->winSize, packet->data, dataSize);
     wnode->dataSize = dataSize;
     wnode->isPresent = 1;
 
     if (RecWinQ->nextSeqExpected == packet->seqNum) {
-        int wInd;
-        do {
-            RecWinQ->nextSeqExpected++;
-            RecWinQ->advertisedWin--;
-            wInd = GET_INDEX(RecWinQ, RecWinQ->nextSeqExpected); 
-        } while ((IS_PRESENT(RecWinQ, wInd)) && (GET_SEQ_NUM(RecWinQ, wInd) == RecWinQ->nextSeqExpected));
+        RecWinQ->nextSeqExpected++;
+        RecWinQ->advertisedWin--;
     }
 
     printRecWindow(RecWinQ);
-    return 1;
+    return wnode;
 }
 
 void initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize) {
     RecWinQ->wnode           = (RecWinNode*) calloc(recWinSize, sizeof(RecWinNode));
     RecWinQ->winSize         = recWinSize;
     RecWinQ->advertisedWin   = recWinSize;
-    RecWinQ->nextSeqExpected = DATA_SEQ_NO;
-    RecWinQ->consumerSeqNum  = DATA_SEQ_NO;
+    RecWinQ->nextSeqExpected = firstPacket->seqNum;
+    RecWinQ->consumerSeqNum  = firstPacket->seqNum;
 
     // Add first packet in receving window
     addPacketToRecWin(RecWinQ, firstPacket, packetSize-HEADER_LEN);
@@ -125,9 +114,9 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
     return n;
 }
 
-void *producerFunction(void *arg) {
+void producerFunction(void *arg) {
     TcpPckt packet;
-    uint32_t seqNum, ackNum, winSize;
+    unsigned int seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
     int len;
 
@@ -145,20 +134,16 @@ void *producerFunction(void *arg) {
             // TODO: Check for errors and report
             break;
         }
-        printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
-        if (addPacketToRecWin(RecWinQ, &packet, len - HEADER_LEN) == 1) {
-            printf("New packet received\n");
-//            printf("Data Contents:\n%s\n", recvBuf);
-        } else {
-            printf("Duplicate packet received\n");
-        }
+        addPacketToRecWin(RecWinQ, &packet, len);
+//        printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
+//        printf("Data Contents:\n%s\n", recvBuf);
         sendAck(RecWinQ, sockfd);
     } 
     //TODO Logic for Fin-Ack
     sendFinAck(RecWinQ, sockfd);
 }
 
-void *consumerFunction(void *arg) {
+void consumerFunction(void *arg) {
     TcpPckt packet;
     unsigned int seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
@@ -169,34 +154,25 @@ void *consumerFunction(void *arg) {
 
 
     //TODO Logic for randomly sleeping 
-    int sleepTime = 2;
+    int sleepTime = 8;
     
     while(1) {
         sleep(sleepTime);
         while((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)){
-            assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum)) == 1);
-            int wIndex =GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum); 
-            
-//            printf("Queue Stats winSize: %d advertisedWin: %d 
-//                    nextSeqExpected: %d consumerSeqNum: %d\n", RecWinQ->winSize, 
-//                    RecWinQ->advertisedWin, RecWinQ->nextSeqExpected,  
-//                    RecWinQ->consumerSeqNum);
-
-
-            readPckt(GET_PACKET(RecWinQ, wIndex),
-                    (GET_DATA_SIZE(RecWinQ, wIndex)+ HEADER_LEN),
+            //assert(IS_PRESENT(RecWinQ, RecWinQ->consumerSeqNum) == 1);
+            printf("Queue Stats winSize: %d advertisedWin: %d nextSeqExpected: %d consumerSeqNum: %d\n", RecWinQ->winSize, RecWinQ->advertisedWin, RecWinQ->nextSeqExpected,  RecWinQ->consumerSeqNum);
+            readPckt(GET_PACKET(RecWinQ, RecWinQ->consumerSeqNum),
+                    sizeof(*(GET_PACKET(RecWinQ, RecWinQ->consumerSeqNum))), 
                     &seqNum, &ackNum, &winSize, recvBuf);
             
-            printf("Seq num: %d\t Bytes Read: %d\n", seqNum, 
-                (GET_DATA_SIZE(RecWinQ, wIndex)+ HEADER_LEN));
-        
-            printf("Data Contents:\n%s\n", recvBuf);
-            GET_WNODE(RecWinQ, RecWinQ->consumerSeqNum)->isPresent = 0; 
-            (RecWinQ->consumerSeqNum)++;
-            (RecWinQ->advertisedWin)++;
+            printf("I am here!\n\n\n\n\n ");
             
-            printRecWindow(RecWinQ);
-            if (GET_DATA_SIZE(RecWinQ, wIndex) != MAX_PAYLOAD ) { 
+            printf("Seq num: %d\t Bytes Read: %d\n", seqNum, 
+                    sizeof(*(GET_PACKET(RecWinQ, RecWinQ->consumerSeqNum))));
+            printf("Data Contents:\n%s\n", recvBuf);
+            (RecWinQ->consumerSeqNum)++;
+            
+            if (seqNum == FIN_SEQ_NO) { 
                 // TODO: Check for errors and report
                 return;
             }
@@ -209,8 +185,36 @@ void *consumerFunction(void *arg) {
 }
 
 void startProdConsum(pthread_t *producerThread, pthread_t *consumerThread, struct prodConsArg *arg) {
-    Pthread_create(&(*producerThread), NULL, &producerFunction, (void *)arg);
-    Pthread_create(&(*consumerThread), NULL, &consumerFunction, (void *)arg);
+    int res, err;
+    pthread_attr_t attr;
+    res = pthread_attr_init(&attr);
+
+    if (res != 0) 
+    {
+        perror("Attribute init failed - Prod_consumer threads\n");
+        exit(EXIT_FAILURE);
+    }
+
+/*  res = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (res != 0) 
+    {
+        perror("Setting detached state failed - Echo server thread\n");
+        exit(EXIT_FAILURE);
+    }
+*/
+    res = pthread_create(&(*producerThread), &attr, producerFunction, (void *)arg);
+    if (res != 0) 
+    {
+        perror("Creation of producer thread failed\n");
+        exit(EXIT_FAILURE);
+    }
+    res = pthread_create(&(*consumerThread), &attr, consumerFunction, (void *)arg);
+    if (res != 0) 
+    {
+        perror("Creation of consumer thread failed\n");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 int fileTransfer(int *sockfd, RecWinQueue *RecWinQ) {
@@ -227,5 +231,6 @@ int fileTransfer(int *sockfd, RecWinQueue *RecWinQ) {
 
     // TODO: Send a FIN-ACK
     printf("\nFile Transfer successfully completed\n");
+
 }
 

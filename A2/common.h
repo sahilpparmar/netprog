@@ -36,7 +36,8 @@
 #define FIN_ACK_SEQ_NO  5
 #define DATA_SEQ_NO     11
 
-#define CLI_SEQ_NO      0
+#define CLI_DEF_SEQ_NO      0
+#define CLI_DEF_ACK_NO      0
 
 #define GET_INDEX(winQ, seqNum) ((seqNum)%(winQ->winSize))
 #define GET_WNODE(winQ, seqNum) (&(winQ->wnode[GET_INDEX(winQ, seqNum)]))

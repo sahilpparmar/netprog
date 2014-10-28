@@ -219,6 +219,7 @@ error:
         exit(0);
     } // End - Child Process
     
+    sleep(2);
     return pid;
 } 
 
