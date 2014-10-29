@@ -3,6 +3,8 @@
 #include "assert.h"
 #include "math.h"
 
+pthread_mutex_t QueueMutex = PTHREAD_MUTEX_INITIALIZER;
+
 struct prodConsArg{
     int *sockfd;
     RecWinQueue *queue; 
@@ -152,8 +154,13 @@ static void *producerFunction(void *arg) {
     RecWinQueue *RecWinQ = (prodCons->queue);
 
     while (1) {
+
         len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
                 "Receiving next file packet");
+
+        Pthread_mutex_lock(&QueueMutex);
+        printf("\n - - - - - - - - - - - - - Inside Producer Thread - - - - - - - - - - - -\n");
+
         if (addPacketToRecWin(RecWinQ, &packet, len) == -1) {
             // Received FIN - terminate connection
             terminateConnection(sockfd, RecWinQ, &packet, len);
@@ -161,7 +168,12 @@ static void *producerFunction(void *arg) {
         } else {
             sendAck(RecWinQ, sockfd);
         }
-    } 
+        printf("\n - - - - - - - - - - - - - Exiting Producer Thread - - - - - - - - - - - -\n");
+        Pthread_mutex_unlock(&QueueMutex);
+    }
+
+    printf("\n - - - - - - - - - - - - - Exiting Producer Thread - - - - - - - - - - - -\n");
+    Pthread_mutex_unlock(&QueueMutex);
 }
 
 static void *consumerFunction(void *arg) {
@@ -183,6 +195,9 @@ static void *consumerFunction(void *arg) {
         printf(KYEL "Consumer Going to sleep for %f\n" RESET,sleepTime);
         sleep(sleepTime);
        
+        Pthread_mutex_lock(&QueueMutex);
+        printf("\n - - - - - - - - - - - - - Inside Consumer Thread - - - - - - - - - - - -\n");
+        
         while ((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)) {
             assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum)) &&
                     "Invalid Packet Contents in receiving window");
@@ -202,9 +217,14 @@ static void *consumerFunction(void *arg) {
             
             printRecWindow(RecWinQ);
             if (GET_DATA_SIZE(RecWinQ, wIndex) != MAX_PAYLOAD ) { 
+                printf("\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+                Pthread_mutex_unlock(&QueueMutex);
                 return;
             }
         }
+
+        printf("\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+        Pthread_mutex_unlock(&QueueMutex);
     }
 }
 
