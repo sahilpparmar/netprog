@@ -44,6 +44,8 @@
 #define PROBE_TIMER     3 // sec
 #define FIN_ACK_TIMER   3 // sec
 
+#define M_LOG2E 1.44269504088896340736 //log2(e)
+
 #define GET_INDEX(    winQ, seqNum) ((seqNum)%(winQ->winSize))
 #define GET_WNODE(    winQ, seqNum) (&(winQ->wnode[GET_INDEX(winQ, seqNum)]))
 #define IS_PRESENT(   winQ, ind)    (winQ->wnode[ind].isPresent)

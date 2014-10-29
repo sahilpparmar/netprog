@@ -156,9 +156,11 @@ send3HSAgain:
         printf("Seq num: %d\t Ack num: %d\t" KYEL "2HS from Server\n" RESET, seqNum, ackNum);
         goto send3HSAgain;
     }
+    printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
+    printf("New Packet received\n");
 
     // Initialize Receiving Window
-    if (initializeRecWinQ(RecWinQ, &packet, len, in_receive_win) == -1) {
+    if (initializeRecWinQ(RecWinQ, &packet, len, in_receive_win)) {
         // Received FIN - terminate connection
         terminateConnection(sockfd, RecWinQ, &packet, len);
         exit(0);

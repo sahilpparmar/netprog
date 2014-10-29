@@ -1,6 +1,9 @@
 #include "client.h"
 #include "unpthread.h"
 #include "assert.h"
+#include "math.h"
+
+pthread_mutex_t QueueMutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct prodConsArg{
     int *sockfd;
@@ -44,7 +47,7 @@ static void printRecWindow(RecWinQueue *RecWinQ) {
 static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int packetSize) {
     if (packet->seqNum == FIN_SEQ_NO) {
         printf(KYEL "FIN packet received\n" RESET);
-        return -1;
+        return 1;
     } else if (packet->seqNum == PROBE_SEQ_NO) {
         printf(KYEL "PROBE packet received\n" RESET);
         return 0;
@@ -95,6 +98,7 @@ int initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize
     return addPacketToRecWin(RecWinQ, firstPacket, packetSize);
 }
 
+
 void sendAck(RecWinQueue *RecWinQ, int fd) { 
     char buf[ACK_PRINT_BUFF];
     TcpPckt packet;
@@ -143,7 +147,9 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
 
 static void *producerFunction(void *arg) {
     TcpPckt packet;
-    int len;
+    uint32_t seqNum, ackNum, winSize;
+    char recvBuf[MAX_PAYLOAD+1];
+    int len, terminate;
 
     struct prodConsArg *prodCons= ((struct prodConsArg *)arg);
 
@@ -151,16 +157,22 @@ static void *producerFunction(void *arg) {
     RecWinQueue *RecWinQ = (prodCons->queue);
 
     while (1) {
+
         len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
                 "Receiving next file packet");
-        if (addPacketToRecWin(RecWinQ, &packet, len) == -1) {
+
+        Pthread_mutex_lock(&QueueMutex);
+        terminate = addPacketToRecWin(RecWinQ, &packet, len);
+        Pthread_mutex_unlock(&QueueMutex);
+
+        if (terminate) {
             // Received FIN - terminate connection
             terminateConnection(sockfd, RecWinQ, &packet, len);
             break;
         } else {
             sendAck(RecWinQ, sockfd);
         }
-    } 
+    }
 }
 
 static void *consumerFunction(void *arg) {
@@ -172,12 +184,15 @@ static void *consumerFunction(void *arg) {
     struct prodConsArg *prodCons= ((struct prodConsArg *)arg);
     RecWinQueue *RecWinQ = (prodCons->queue);
 
-
-    //TODO Logic for randomly sleeping 
-    int sleepTime = 2;
+    float sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
     
     while (1) {
+        // TODO: Need to use sleep with msec
         sleep(sleepTime);
+       
+        Pthread_mutex_lock(&QueueMutex);
+        printf("\n - - - - - - - - - - - - - Inside Consumer Thread - - - - - - - - - - - -\n");
+        
         while ((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)) {
             assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum)) &&
                     "Invalid Packet Contents in receiving window");
@@ -197,9 +212,17 @@ static void *consumerFunction(void *arg) {
             
             printRecWindow(RecWinQ);
             if (GET_DATA_SIZE(RecWinQ, wIndex) != MAX_PAYLOAD ) { 
+                printf("\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+                Pthread_mutex_unlock(&QueueMutex);
                 return;
             }
         }
+
+        sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
+        printf(KYEL "Consumer Going to sleep for %f\n" RESET, sleepTime);
+
+        printf("\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+        Pthread_mutex_unlock(&QueueMutex);
     }
 }
 
