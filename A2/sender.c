@@ -58,11 +58,16 @@ void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize,
     SendWinQ->ssfresh       = 0;
 }
 
-static sigjmp_buf jmpbuf;
+static sigjmp_buf jmpToSendFile, jmpToTerminateConn;
 
-static void sig_alarm(int signo) {
-    siglongjmp(jmpbuf, 1);
+static void sigAlarmForSendingFile(int signo) {
+    siglongjmp(jmpToSendFile, 1);
 }
+
+static void sigAlarmForSendingFIN(int signo) {
+    siglongjmp(jmpToTerminateConn, 1);
+}
+
 
 void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rttInfo) {
     SendWinNode *wnode;
@@ -70,7 +75,7 @@ void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rt
     uint32_t seqNum, ackNum, winSize, expectedAckNum;
     int i, len, done, numPacketsSent, dupAcks;
 
-    Signal(SIGALRM, sig_alarm);
+    Signal(SIGALRM, sigAlarmForSendingFile);
 
     done = 0;
     while (!done) {
@@ -116,14 +121,15 @@ sendAgain:
         // TODO: change alarm to setitimer
         alarm(rtt_start(&rttInfo)/1000);
 
-        if (sigsetjmp(jmpbuf, 1) != 0) {
-            printf(KYEL _3TABS "Timeout!\n" RESET);
+        if (sigsetjmp(jmpToSendFile, 1) != 0) {
+            printf(KRED "Receving ACKs => TIMEOUT\n" RESET);
             int retransmitCnt = GET_OLDEST_SEQ_WNODE(SendWinQ)->numOfRetransmits;
             if (rtt_timeout(&rttInfo, retransmitCnt)) {
                 char *str = "Server Child Terminated due to 12 Timeouts";
-                err_msg(str);
+                printf(KRED); err_msg(str); printf(RESET);
                 break;
             }
+            done = 0;
             goto sendAgain;
         } 
 
@@ -142,7 +148,7 @@ sendAgain:
             if (SendWinQ->oldestSeqNum == ackNum) {
                 dupAcks++;
                 if (dupAcks == 3) {
-                    printf("3 Duplicate ACKs received. Enabling Fast Retransmit\n");
+                    printf(KRED "3 Duplicate ACKs received. Enabling Fast Retransmit\n" RESET);
                     done = 0;
                     break;
                 }
@@ -172,13 +178,36 @@ sendAgain:
 }
 
 void terminateConnection(int connFd, char *errMsg) {
-    TcpPckt packet;
-    int len;
+    TcpPckt finPacket, finAckPacket;
+    int retransmitCount, len;
 
+    Signal(SIGALRM, sigAlarmForSendingFIN);
+    retransmitCount = 0;
+    len = fillPckt(&finPacket, FIN_SEQ_NO, 0, 0, errMsg, strlen(errMsg));
+
+sendFINAgain:
     // Send a FIN to terminate connection
-    len = fillPckt(&packet, FIN_SEQ_NO, 0, 0, errMsg, strlen(errMsg));
-    Writen(connFd, (void *) &packet, len);
+    printf(KYEL "\nFIN packet Sent to terminate connection\n" RESET);
+    Writen(connFd, (void *) &finPacket, len);
 
-    // TODO: Recv FIN-ACK from client
+    // TODO: change alarm to setitimer
+    alarm(3);
+
+    if (sigsetjmp(jmpToTerminateConn, 1) != 0) {
+        if (++retransmitCount > MAX_RETRANSMIT) {
+            char *str = "Server Child Terminated due to 12 Timeouts";
+             err_msg(str); printf(RESET);
+            return;
+        }
+        printf(KRED "TIMEOUT\n" RESET);
+        goto sendFINAgain;
+    }
+
+    // Recv FIN-ACK from client
+    printf(KYEL "Receving FIN-ACK => " RESET);
+    Read(connFd, (void *) &finAckPacket, DATAGRAM_SIZE);
+    printf(KGRN "Received\n" RESET);
+    printf(RESET);
+    alarm(0);
 }
 

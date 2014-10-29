@@ -42,33 +42,47 @@ static void printRecWindow(RecWinQueue *RecWinQ) {
     printf( RESET "\n");
 }
 
-static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int dataSize) {
+static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int packetSize) {
+    if (packet->seqNum == FIN_SEQ_NO) {
+        printf(KYEL "FIN packet received\n" RESET);
+        return -1;
+    }
+
     RecWinNode *wnode = GET_WNODE(RecWinQ, packet->seqNum);
-
+    printf("Seq num: %d  Bytes Read: %d  ", packet->seqNum, packetSize);
+    printf(KYEL);
     if (wnode->isPresent) {
+        // Duplicate packet arrived
         assert((wnode->packet.seqNum == packet->seqNum) && "Invalid packet seq num");
-        printRecWindow(RecWinQ);
-        return 0;
-    }
+        printf("DUPLICATE packet received\n");
 
-    fillPckt(&wnode->packet, packet->seqNum, packet->ackNum, packet->winSize, packet->data, dataSize);
-    wnode->dataSize = dataSize;
-    wnode->isPresent = 1;
+    } else if (RecWinQ->nextSeqExpected > packet->seqNum) {
+        printf("OLD packet received\n");
 
-    if (RecWinQ->nextSeqExpected == packet->seqNum) {
-        int wInd;
-        do {
-            RecWinQ->nextSeqExpected++;
-            RecWinQ->advertisedWin--;
-            wInd = GET_INDEX(RecWinQ, RecWinQ->nextSeqExpected); 
-        } while ((IS_PRESENT(RecWinQ, wInd)) && (GET_SEQ_NUM(RecWinQ, wInd) == RecWinQ->nextSeqExpected));
+    } else {
+        // New packet arrived
+        fillPckt(&wnode->packet, packet->seqNum, packet->ackNum, packet->winSize,
+                packet->data, packetSize - HEADER_LEN);
+        wnode->dataSize = packetSize - HEADER_LEN;
+        wnode->isPresent = 1;
+
+        if (RecWinQ->nextSeqExpected == packet->seqNum) {
+            int wInd;
+            do {
+                RecWinQ->nextSeqExpected++;
+                RecWinQ->advertisedWin--;
+                wInd = GET_INDEX(RecWinQ, RecWinQ->nextSeqExpected);
+            } while ((IS_PRESENT(RecWinQ, wInd)) && (GET_SEQ_NUM(RecWinQ, wInd) == RecWinQ->nextSeqExpected));
+        }
+        printf("NEW packet received\n");
     }
+    printf(RESET);
 
     printRecWindow(RecWinQ);
-    return 1;
+    return 0;
 }
 
-void initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize) {
+int initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize) {
     RecWinQ->wnode           = (RecWinNode*) calloc(recWinSize, sizeof(RecWinNode));
     RecWinQ->winSize         = recWinSize;
     RecWinQ->advertisedWin   = recWinSize;
@@ -76,10 +90,10 @@ void initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSiz
     RecWinQ->consumerSeqNum  = DATA_SEQ_NO;
 
     // Add first packet in receving window
-    addPacketToRecWin(RecWinQ, firstPacket, packetSize-HEADER_LEN);
+    return addPacketToRecWin(RecWinQ, firstPacket, packetSize);
 }
 
-// Used by client to send Acks
+
 void sendAck(RecWinQueue *RecWinQ, int fd) { 
     char buf[ACK_PRINT_BUFF];
     TcpPckt packet;
@@ -89,27 +103,27 @@ void sendAck(RecWinQueue *RecWinQ, int fd) {
     fillPckt(&packet, CLI_DEF_SEQ_NO, RecWinQ->nextSeqExpected,
         RecWinQ->advertisedWin, NULL, 0); //No data
 
-    writeWithPacketDrops(fd, NULL, 0, &packet, HEADER_LEN, buf);
+    writeWithPacketDrops(fd, &packet, HEADER_LEN, buf);
 
 }
 
-void sendFinAck(RecWinQueue *RecWinQ, int fd) { 
+static void sendFinAck(RecWinQueue *RecWinQ, int fd) {
     TcpPckt packet;
     
     fillPckt(&packet, FIN_ACK_SEQ_NO, CLI_DEF_ACK_NO,
-        RecWinQ->advertisedWin, NULL, 0); //No data
+        RecWinQ->advertisedWin, NULL, 0);
 
-    writeWithPacketDrops(fd, NULL, 0, &packet, HEADER_LEN, "Sending FIN-ACK\t\t");
+    writeWithPacketDrops(fd, &packet, HEADER_LEN, "Sending FIN-ACK\t\t");
 
 }
 
-int writeWithPacketDrops(int fd, SA* sa, int salen, void *ptr, size_t nbytes, char *msg) {
+int writeWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
     printf("\n%s: ", msg);
     if (isPacketLost()) {
         return -1;
     }
     printf(KGRN _4TABS "Sent\n" RESET);
-    Writen(fd, ptr, nbytes);//TODO , 0, sa, salen);
+    Writen(fd, ptr, nbytes);
     return 1;
 }
 
@@ -117,7 +131,7 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
     int n;
     while (1) {
         printf("\n%s: ", msg);
-        n = Read(fd, ptr, nbytes);//, 0, NULL, NULL);
+        n = Read(fd, ptr, nbytes);
         if (!isPacketLost()) {
             break;
         }
@@ -126,7 +140,7 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
     return n;
 }
 
-void *producerFunction(void *arg) {
+static void *producerFunction(void *arg) {
     TcpPckt packet;
     uint32_t seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
@@ -140,25 +154,17 @@ void *producerFunction(void *arg) {
     while (1) {
         len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
                 "Receiving next file packet");
-        readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        if (seqNum == FIN_SEQ_NO) {
-            printf("FIN Packet Received\n");
-            // TODO: Check for errors and report
+        if (addPacketToRecWin(RecWinQ, &packet, len) == -1) {
+            // Received FIN - terminate connection
+            terminateConnection(sockfd, RecWinQ, &packet, len);
             break;
-        }
-        printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
-        if (addPacketToRecWin(RecWinQ, &packet, len - HEADER_LEN) == 1) {
-            printf("New packet received\n");
-//            printf("Data Contents:\n%s\n", recvBuf);
         } else {
-            printf("Duplicate packet received\n");
+            sendAck(RecWinQ, sockfd);
         }
-        sendAck(RecWinQ, sockfd);
     } 
-    sendFinAck(RecWinQ, sockfd);
 }
 
-void *consumerFunction(void *arg) {
+static void *consumerFunction(void *arg) {
     TcpPckt packet;
     unsigned int seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
@@ -169,52 +175,37 @@ void *consumerFunction(void *arg) {
 
 
     //TODO Logic for randomly sleeping 
-    float sleepTime = 2;
+    float sleepTime;
     
     while(1) {
-
+        
         sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
-        printf("Consumer Going to sleep for %f\n",sleepTime);
+        printf(KYEL "Consumer Going to sleep for %f\n" RESET,sleepTime);
         sleep(sleepTime);
-
-        while((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)){
-            assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum)) == 1);
-            int wIndex =GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum); 
-            
-//            printf("Queue Stats winSize: %d advertisedWin: %d 
-//                    nextSeqExpected: %d consumerSeqNum: %d\n", RecWinQ->winSize, 
-//                    RecWinQ->advertisedWin, RecWinQ->nextSeqExpected,  
-//                    RecWinQ->consumerSeqNum);
-
+       
+        while ((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)) {
+            assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum)) &&
+                    "Invalid Packet Contents in receiving window");
+            int wIndex = GET_INDEX(RecWinQ,RecWinQ->consumerSeqNum);
 
             readPckt(GET_PACKET(RecWinQ, wIndex),
                     (GET_DATA_SIZE(RecWinQ, wIndex)+ HEADER_LEN),
                     &seqNum, &ackNum, &winSize, recvBuf);
             
-            printf("Seq num: %d\t Bytes Read: %d\n", seqNum, 
-                (GET_DATA_SIZE(RecWinQ, wIndex)+ HEADER_LEN));
+            printf("\nReading Packet with Seq num: %d, File Data Bytes Read: %d\n",
+                    seqNum, GET_DATA_SIZE(RecWinQ, wIndex));
         
-            printf("Data Contents:\n%s\n", recvBuf);
+            printf("File Data Contents:\n%s\n", recvBuf);
             GET_WNODE(RecWinQ, RecWinQ->consumerSeqNum)->isPresent = 0; 
             (RecWinQ->consumerSeqNum)++;
             (RecWinQ->advertisedWin)++;
             
             printRecWindow(RecWinQ);
             if (GET_DATA_SIZE(RecWinQ, wIndex) != MAX_PAYLOAD ) { 
-                // TODO: Check for errors and report
                 return;
             }
-
-
         }
-
     }
-
-}
-
-void startProdConsum(pthread_t *producerThread, pthread_t *consumerThread, struct prodConsArg *arg) {
-    Pthread_create(&(*producerThread), NULL, &producerFunction, (void *)arg);
-    Pthread_create(&(*consumerThread), NULL, &consumerFunction, (void *)arg);
 }
 
 int fileTransfer(int *sockfd, RecWinQueue *RecWinQ) {
@@ -225,11 +216,22 @@ int fileTransfer(int *sockfd, RecWinQueue *RecWinQ) {
     arguments.sockfd = sockfd;
     arguments.queue = RecWinQ; 
 
-    startProdConsum(&prodThread, &consThread, &arguments);
+    Pthread_create(&prodThread, NULL, &producerFunction, (void *)&arguments);
+    Pthread_create(&consThread, NULL, &consumerFunction, (void *)&arguments);
+
     pthread_join(prodThread, NULL);
     pthread_join(consThread, NULL);
 
-    // TODO: Send a FIN-ACK
     printf("\nFile Transfer successfully completed\n");
+}
+
+void terminateConnection(int sockfd, RecWinQueue *RecWinQ, TcpPckt *packet, int len) {
+    if (len > HEADER_LEN) {
+        // Server terminated due to error
+        packet->data[len - HEADER_LEN] = '\0';
+        printf(KRED "Server Error: %s\n" RESET, packet->data);
+    }
+
+    sendFinAck(RecWinQ, sockfd);
 }
 

@@ -6,7 +6,7 @@ static char  in_file_name[PARAM_SIZE];     // FileName to be transfered
 static int   in_receive_win;               // Size of receiving sliding window
 static int   in_random_seed;               // Random Gen Seed Value
 float        in_packet_loss;               // Probability of packet loss
-int   in_read_delay;                // mean millisec at which client reads data from receving window
+int          in_read_delay;                // mean millisec at which client reads data from receving window
 
 static void parseClientParams() {
     FILE *inp_file = fopen(CLIENT_IN, "r");
@@ -109,8 +109,8 @@ send1HSAgain:
     seqNum = SYN_SEQ_NO; ackNum = SYN_ACK_SEQ_NO; winSize = in_receive_win;
     fillPckt(&packet, seqNum, ackNum, winSize, in_file_name, strlen(in_file_name));
 
-    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),&packet,
-            HEADER_LEN+strlen(in_file_name), "Sending 1st HS (SYN)\t");
+    writeWithPacketDrops(sockfd, &packet, HEADER_LEN+strlen(in_file_name),
+                        "Sending 1st HS (SYN)\t");
     printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
     ++retransmitCount;
 
@@ -144,8 +144,7 @@ send3HSAgain:
     seqNum = ACK_SEQ_NO; ackNum = DATA_SEQ_NO; winSize = in_receive_win;
     fillPckt(&packet, seqNum, ackNum, winSize, NULL, 0);
 
-    writeWithPacketDrops(sockfd, (SA*) &servAddr, sizeof(servAddr),
-            &packet, HEADER_LEN, "Sending 3rd HS (ACK)\t");
+    writeWithPacketDrops(sockfd, &packet, HEADER_LEN, "Sending 3rd HS (ACK)\t");
     printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
 
     len = readWithPacketDrops(sockfd, (void *) &packet,
@@ -154,14 +153,18 @@ send3HSAgain:
 
     // Verify if packet is for 2HS or 1st file packet
     if (seqNum == SYN_ACK_SEQ_NO) {
-        printf(KGRN "Seq num: %d\t Ack num: %d\t(2HS from Server)\n" RESET, seqNum, ackNum);
+        printf("Seq num: %d\t Ack num: %d\t" KYEL "2HS from Server\n" RESET, seqNum, ackNum);
         goto send3HSAgain;
     }
     printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
     printf("New Packet received\n");
 
     // Initialize Receiving Window
-    initializeRecWinQ(RecWinQ, &packet, len, in_receive_win);
+    if (initializeRecWinQ(RecWinQ, &packet, len, in_receive_win) == -1) {
+        // Received FIN - terminate connection
+        terminateConnection(sockfd, RecWinQ, &packet, len);
+        exit(0);
+    }
     sendAck(RecWinQ, sockfd);
 }
 

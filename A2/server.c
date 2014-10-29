@@ -17,7 +17,7 @@ static void sig_child(int signo) {
             else 
                 prev = cur->next;
 
-            printf(KRED "\nChild deleted" RESET "Pid: %d\n", pid);
+            printf(KRED "\nChild deleted => Pid: %d" RESET "\n", pid);
             free(cur);
             return;
         }
@@ -135,7 +135,7 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         len = sizeof(struct sockaddr_in);
         Getsockname(sock_fd[req_sock], (SA *) &servAddr, &len);
 
-        printf("Using Server IP:Port => %s\n", Sock_ntop((SA *) &servAddr, sizeof(struct sockaddr_in)));
+        printf("\nUsing Server IP:Port => %s\n", Sock_ntop((SA *) &servAddr, sizeof(struct sockaddr_in)));
 
         // Create a new connection socket
         connFd = Socket(AF_INET, SOCK_DGRAM, 0);
@@ -164,23 +164,25 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
 send2HSAgain:
         // Send second handshake
         len = fillPckt(&packet, SYN_ACK_SEQ_NO, ACK_SEQ_NO, 0, sendBuf, MAX_PAYLOAD);
-        printf(KYEL "\nSecond HS sent from Listening Socket:" RESET "New Conn Port No => %s\n" , packet.data);
+        printf(KYEL);
+        printf("\nSecond HS sent from Listening Socket: New Conn Port No => %s\n" , packet.data);
         Sendto(sock_fd[req_sock], &packet, len, 0, (SA *) &cliaddr, sizeof(cliaddr));
 
         if (send2HSFromConnFd) {
-            printf(KYEL "Second HS sent from Conn Socket: New Conn Port No => %s" RESET "\n", packet.data);
+            printf("Second HS sent from Conn Socket: New Conn Port No => %s\n", packet.data);
             Sendto(connFd, &packet, len, 0, (SA *) &cliaddr, sizeof(cliaddr));
         }
+        printf(RESET);
         timestamp = rtt_ts(&rttInfo);
         
         // TODO: change alarm to setitimer
         alarm(rtt_start(&rttInfo)/1000);
 
         if (sigsetjmp(jmpbuf, 1) != 0) {
-            printf(KYEL _3TABS "Timeout!\n" RESET);
+            printf(KRED "Receving Third HS => TIMEOUT\n" RESET);
             if (rtt_timeout(&rttInfo, ++retransmitCnt)) {
                 char *str = "Server Child Terminated due to 12 Timeouts";
-                err_msg(str);
+                printf(KRED); err_msg(str); printf(RESET);
                 strcpy(errMsg, str);
                 goto error;
             }
@@ -195,7 +197,7 @@ send2HSAgain:
         rtt_stop(&rttInfo, timestamp);
 
         readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        printf("\nThird HS received:" KGRN "Connection Establised Successfully\n" RESET);
+        printf(KGRN "\nThird HS received: Connection Establised Successfully\n" RESET);
         printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
 
         // Connect to Client addr
@@ -205,7 +207,7 @@ send2HSAgain:
         int fileFd;
         if ((fileFd = open(fileName, O_RDONLY)) == -1) {
             char *str = "Server Child Terminated due to Invalid FileName";
-            err_msg(str);
+            printf(KRED); err_msg(str); printf(RESET);
             strcpy(errMsg, str);
             goto error;
         }
