@@ -66,6 +66,7 @@ void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rt
     TcpPckt packet;
     uint32_t seqNum, ackNum, winSize, expectedAckNum;
     int i, len, done, numPacketsSent, dupAcks;
+    struct itimerval timer;
 
     Signal(SIGALRM, sigAlarmForSendingFile);
 
@@ -119,8 +120,7 @@ sendAgain:
             }
         }
 
-        // TODO: change alarm to setitimer
-        alarm(rtt_start(&rttInfo)/1000);
+        setTimer(&timer, rtt_start(&rttInfo));
 
         if (sigsetjmp(jmpToSendFile, 1) != 0) {
             printf(KRED "Receving ACKs => TIMEOUT\n" RESET);
@@ -179,13 +179,14 @@ sendAgain:
             }
         }
 
-        alarm(0);
+        setTimer(&timer, 0);
     }
 }
 
 void terminateConnection(int connFd, char *errMsg) {
     TcpPckt finPacket, finAckPacket;
     int retransmitCount, len;
+    struct itimerval timer;
 
     Signal(SIGALRM, sigAlarmForSendingFIN);
     retransmitCount = 0;
@@ -197,8 +198,7 @@ sendFINAgain:
     Writen(connFd, (void *) &finPacket, len);
     retransmitCount++;
 
-    // TODO: change alarm to setitimer
-    alarm(FIN_ACK_TIMER);
+    setTimer(&timer, FIN_ACK_TIMER);
 
     if (sigsetjmp(jmpToTerminateConn, 1) != 0) {
         if (retransmitCount > MAX_RETRANSMIT) {
@@ -215,6 +215,6 @@ sendFINAgain:
     Read(connFd, (void *) &finAckPacket, DATAGRAM_SIZE);
     printf(KGRN "Received\n" RESET);
     printf(RESET);
-    alarm(0);
+    setTimer(&timer, 0);
 }
 

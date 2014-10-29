@@ -16,6 +16,8 @@
 #define KYEL            "\x1B[33m"
 #define KBLU            "\x1B[34m"
 #define KMAG            "\x1B[35m"
+#define KCYM            "\x1B[36m"
+#define KWHT            "\x1B[37m"
 #define RESET           "\033[0m"
 
 #define ACK_PRINT_BUFF  50
@@ -40,11 +42,9 @@
 #define CLI_DEF_SEQ_NO  0
 #define CLI_DEF_ACK_NO  0
 
-#define CLIENT_TIMER    3 // sec
-#define PROBE_TIMER     3 // sec
-#define FIN_ACK_TIMER   3 // sec
-
-#define M_LOG2E 1.44269504088896340736 //log2(e)
+#define CLIENT_TIMER    3000 // millisec
+#define PROBE_TIMER     3000 // millisec
+#define FIN_ACK_TIMER   3000 // millisec
 
 #define GET_INDEX(    winQ, seqNum) ((seqNum)%(winQ->winSize))
 #define GET_WNODE(    winQ, seqNum) (&(winQ->wnode[GET_INDEX(winQ, seqNum)]))
@@ -73,6 +73,8 @@ int fillPckt(TcpPckt *packet, uint32_t seqNum, uint32_t ackNum,
         uint32_t winSize, char* dataPtr, int len);
 int readPckt(TcpPckt *packet, int packet_size, uint32_t *seqNum,
         uint32_t *ackNum, uint32_t *winSize, char* dataPtr);
+
+int setTimer(struct itimerval *timer, long int milliSec);
 
 void Sleep(int sec, int msec);
 

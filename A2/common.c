@@ -149,6 +149,19 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
     return isLocal;
 }
 
+int setTimer(struct itimerval *timer, long int milliSec) {
+    
+    timer->it_interval.tv_sec = 0;
+    timer->it_interval.tv_usec = 0;
+    
+    timer->it_value.tv_sec = milliSec / 1000;
+    timer->it_value.tv_usec = (milliSec % 1000) *1000;
+    
+    if( setitimer(ITIMER_REAL, timer, 0) != 0) {
+        printf("Error in setting timer \n");
+        exit(0);
+    }
+}
 int fillPckt(TcpPckt *packet, uint32_t seqNum, uint32_t ackNum,
             uint32_t winSize, char* dataPtr, int len) {
     packet->seqNum = seqNum;
