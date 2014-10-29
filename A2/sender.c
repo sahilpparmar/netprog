@@ -35,13 +35,6 @@ static SendWinNode* addPacketToSendWin(SendWinQueue *SendWinQ, TcpPckt *packet, 
     return wnode;
 }
 
-static void waitUntilCwinIsNonZero(SendWinQueue *SendWinQ, int connFd) {
-    while (SendWinQ->cwin == 0) {
-        // TODO: Use select on connFd and send a probe packet
-        
-    }
-}
-
 static void zeroOutRetransmitCnts(SendWinQueue *SendWinQ) {
     int i;
     for (i = 0; i < SendWinQ->winSize; i++) {
@@ -68,7 +61,6 @@ static void sigAlarmForSendingFIN(int signo) {
     siglongjmp(jmpToTerminateConn, 1);
 }
 
-
 void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rttInfo) {
     SendWinNode *wnode;
     TcpPckt packet;
@@ -79,42 +71,51 @@ void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rt
 
     done = 0;
     while (!done) {
-        waitUntilCwinIsNonZero(SendWinQ, connFd);
-        zeroOutRetransmitCnts(SendWinQ); // TODO ??
+        zeroOutRetransmitCnts(SendWinQ);
 
 sendAgain:
         // Send Packets
         seqNum = SendWinQ->oldestSeqNum;
-        for (i = 0; i < SendWinQ->cwin; i++) {
 
-            if (seqNum < SendWinQ->nextNewSeqNum) {
-                // Packet already in sending window
-                int wInd = seqNum % SendWinQ->winSize;
-                assert(IS_PRESENT(SendWinQ, wInd) && "Packet should be present");
-                assert((seqNum == GET_SEQ_NUM(SendWinQ, wInd)) && "Invalid Seq Num of Sending Packet");
+        if (SendWinQ->cwin == 0) {
+            // Congestion window size is 0. Send a Probe Message every PROBE_TIMER seconds.
+            sleep(PROBE_TIMER);
+            len = fillPckt(&packet, PROBE_SEQ_NO, 0, 0, NULL, 0);
+            Writen(connFd, (void *) &packet, len);
+            printf(KYEL "\nPROBE packet Sent to check receiver's window size\n" RESET);
 
-                len = GET_DATA_SIZE(SendWinQ, wInd);
-                wnode = &SendWinQ->wnode[wInd];
-                wnode->numOfRetransmits++;
-            } else {
-                // Get new packet and add to sending window
-                len = getNextNewPacket(&packet, seqNum, 0, 0, fileFd);
-                wnode = addPacketToSendWin(SendWinQ, &packet, len);
-            }
+        } else {
+            for (i = 0; i < SendWinQ->cwin; i++) {
 
-            // Send packet and update timestamp
-            Writen(connFd, (void *) &wnode->packet, len);
-            wnode->timestamp = rtt_ts(&rttInfo);
+                if (seqNum < SendWinQ->nextNewSeqNum) {
+                    // Packet already in sending window
+                    int wInd = seqNum % SendWinQ->winSize;
+                    assert(IS_PRESENT(SendWinQ, wInd) && "Packet should be present");
+                    assert((seqNum == GET_SEQ_NUM(SendWinQ, wInd)) && "Invalid Seq Num of Sending Packet");
 
-            printf("\nPacket Sent =>\t Seq num: %d\t Total Bytes: %d\n", seqNum, len);
-            printSendWindow(SendWinQ);
+                    len = GET_DATA_SIZE(SendWinQ, wInd);
+                    wnode = &SendWinQ->wnode[wInd];
+                    wnode->numOfRetransmits++;
+                } else {
+                    // Get new packet and add to sending window
+                    len = getNextNewPacket(&packet, seqNum, 0, 0, fileFd);
+                    wnode = addPacketToSendWin(SendWinQ, &packet, len);
+                }
 
-            seqNum++;
+                // Send packet and update timestamp
+                Writen(connFd, (void *) &wnode->packet, len);
+                wnode->timestamp = rtt_ts(&rttInfo);
 
-            // No more file contents to send
-            if (len != DATAGRAM_SIZE) {
-                done = 1;
-                break;
+                printf("\nPacket Sent =>\t Seq num: %d\t Total Bytes: %d\n", seqNum, len);
+                printSendWindow(SendWinQ);
+
+                seqNum++;
+
+                // No more file contents to send
+                if (len != DATAGRAM_SIZE) {
+                    done = 1;
+                    break;
+                }
             }
         }
 
@@ -147,19 +148,24 @@ sendAgain:
 
             if (SendWinQ->oldestSeqNum == ackNum) {
                 dupAcks++;
+                printf(KYEL "Duplicate ACK received\n" RESET);
                 if (dupAcks == 3) {
-                    printf(KRED "3 Duplicate ACKs received. Enabling Fast Retransmit\n" RESET);
+                    printf(KRED "3 Duplicate ACKs received. Enabling Fast Retransmit.\n" RESET);
                     done = 0;
                     break;
                 }
             } else {
+                int once = 0;
                 while (SendWinQ->oldestSeqNum < ackNum) {
                     int wInd = GET_OLDEST_SEQ_IND(SendWinQ);
                     assert(IS_PRESENT(SendWinQ, wInd) && "Packet should be present");
                     assert((SendWinQ->oldestSeqNum == GET_SEQ_NUM(SendWinQ, wInd)) &&
                             "Invalid Seq Num of Sending Packet");
 
-                    rtt_stop(&rttInfo, SendWinQ->wnode[wInd].timestamp);
+                    if (!once) {
+                        rtt_stop(&rttInfo, SendWinQ->wnode[wInd].timestamp);
+                        once = 1;
+                    }
                     SendWinQ->wnode[wInd].isPresent = 0;
                     SendWinQ->oldestSeqNum++;
                 }
@@ -189,12 +195,13 @@ sendFINAgain:
     // Send a FIN to terminate connection
     printf(KYEL "\nFIN packet Sent to terminate connection\n" RESET);
     Writen(connFd, (void *) &finPacket, len);
+    retransmitCount++;
 
     // TODO: change alarm to setitimer
-    alarm(3);
+    alarm(FIN_ACK_TIMER);
 
     if (sigsetjmp(jmpToTerminateConn, 1) != 0) {
-        if (++retransmitCount > MAX_RETRANSMIT) {
+        if (retransmitCount > MAX_RETRANSMIT) {
             char *str = "Server Child Terminated due to 12 Timeouts";
              err_msg(str); printf(RESET);
             return;

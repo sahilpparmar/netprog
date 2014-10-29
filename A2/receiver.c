@@ -45,6 +45,9 @@ static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int packetSi
     if (packet->seqNum == FIN_SEQ_NO) {
         printf(KYEL "FIN packet received\n" RESET);
         return -1;
+    } else if (packet->seqNum == PROBE_SEQ_NO) {
+        printf(KYEL "PROBE packet received\n" RESET);
+        return 0;
     }
 
     RecWinNode *wnode = GET_WNODE(RecWinQ, packet->seqNum);

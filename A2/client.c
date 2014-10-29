@@ -115,7 +115,7 @@ send1HSAgain:
     ++retransmitCount;
 
     // TODO: change alarm to setitimer
-    alarm(3);
+    alarm(CLIENT_TIMER);
     
     if (sigsetjmp(jmpFor2HS, 1) != 0) {
         if (retransmitCount > MAX_RETRANSMIT) {

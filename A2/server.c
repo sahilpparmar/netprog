@@ -174,13 +174,14 @@ send2HSAgain:
         }
         printf(RESET);
         timestamp = rtt_ts(&rttInfo);
+        retransmitCnt++;
         
         // TODO: change alarm to setitimer
         alarm(rtt_start(&rttInfo)/1000);
 
         if (sigsetjmp(jmpbuf, 1) != 0) {
             printf(KRED "Receving Third HS => TIMEOUT\n" RESET);
-            if (rtt_timeout(&rttInfo, ++retransmitCnt)) {
+            if (rtt_timeout(&rttInfo, retransmitCnt)) {
                 char *str = "Server Child Terminated due to 12 Timeouts";
                 printf(KRED); err_msg(str); printf(RESET);
                 strcpy(errMsg, str);

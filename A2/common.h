@@ -6,19 +6,19 @@
 #include "unp.h"
 #include "unpifiplus.h"
 
-#define _1TAB    "\t"
-#define _2TABS   "\t\t"
-#define _3TABS   "\t\t\t"
-#define _4TABS   "\t\t\t\t"
+#define _1TAB           "\t"
+#define _2TABS          "\t\t"
+#define _3TABS          "\t\t\t"
+#define _4TABS          "\t\t\t\t"
 
-#define KRED  "\x1B[31m"
-#define KGRN  "\x1B[32m"
-#define KYEL  "\x1B[33m"
-#define KBLU  "\x1B[34m"
-#define KMAG  "\x1B[35m"
-#define RESET "\033[0m"
+#define KRED            "\x1B[31m"
+#define KGRN            "\x1B[32m"
+#define KYEL            "\x1B[33m"
+#define KBLU            "\x1B[34m"
+#define KMAG            "\x1B[35m"
+#define RESET           "\033[0m"
 
-#define ACK_PRINT_BUFF 50
+#define ACK_PRINT_BUFF  50
 
 #define SERVER_IN       "server.in"
 #define CLIENT_IN       "client.in"
@@ -26,32 +26,37 @@
 #define MAX_RETRANSMIT  12
 
 #define HEADER_LEN      12
-#define MAX_PAYLOAD     500
 #define DATAGRAM_SIZE   512
+#define MAX_PAYLOAD     (DATAGRAM_SIZE - HEADER_LEN)
 
 #define SYN_SEQ_NO      1
 #define SYN_ACK_SEQ_NO  2
 #define ACK_SEQ_NO      3
 #define FIN_SEQ_NO      4
 #define FIN_ACK_SEQ_NO  5
+#define PROBE_SEQ_NO    6
 #define DATA_SEQ_NO     11
 
-#define CLI_DEF_SEQ_NO      0
-#define CLI_DEF_ACK_NO      0
+#define CLI_DEF_SEQ_NO  0
+#define CLI_DEF_ACK_NO  0
 
-#define GET_INDEX(winQ, seqNum) ((seqNum)%(winQ->winSize))
-#define GET_WNODE(winQ, seqNum) (&(winQ->wnode[GET_INDEX(winQ, seqNum)]))
-#define IS_PRESENT(winQ, ind) (winQ->wnode[ind].isPresent)
-#define GET_PACKET(winQ, ind) (&(winQ->wnode[ind].packet))
-#define GET_SEQ_NUM(winQ, ind) (GET_PACKET(winQ, ind)->seqNum)
-#define GET_DATA_SIZE(winQ, ind) (winQ->wnode[ind].dataSize)
+#define CLIENT_TIMER    3 // sec
+#define PROBE_TIMER     3 // sec
+#define FIN_ACK_TIMER   3 // sec
+
+#define GET_INDEX(    winQ, seqNum) ((seqNum)%(winQ->winSize))
+#define GET_WNODE(    winQ, seqNum) (&(winQ->wnode[GET_INDEX(winQ, seqNum)]))
+#define IS_PRESENT(   winQ, ind)    (winQ->wnode[ind].isPresent)
+#define GET_PACKET(   winQ, ind)    (&(winQ->wnode[ind].packet))
+#define GET_SEQ_NUM(  winQ, ind)    (GET_PACKET(winQ, ind)->seqNum)
+#define GET_DATA_SIZE(winQ, ind)    (winQ->wnode[ind].dataSize)
 
 typedef struct {
-    uint32_t seqNum;        // 4 bytes
-    uint32_t ackNum;        // 4 bytes
-    uint32_t winSize;       // 4 bytes
+    uint32_t seqNum;            // 4 bytes
+    uint32_t ackNum;            // 4 bytes
+    uint32_t winSize;           // 4 bytes
     char data[MAX_PAYLOAD+1];   // 500 bytes
-} TcpPckt;                      // Total size: 512
+} TcpPckt;                      // 512 bytes
 
 char* getStringParamValue(FILE *inp_file, char *paramVal);
 int getIntParamValue(FILE *inp_file);
