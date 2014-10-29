@@ -89,13 +89,6 @@ static ClientRequest* searchAndUpdateClientList(struct sockaddr_in cliaddr) {
     return new_node;
 }
 
-static void Sleep(int sec, int msec) {
-    struct timeval timeout;
-    timeout.tv_sec = sec;
-    timeout.tv_usec = msec;
-    Select(1, NULL, NULL, NULL, &timeout);
-}
-
 static sigjmp_buf jmpbuf;
 
 static void sig_alarm(int signo) {

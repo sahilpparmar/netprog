@@ -184,11 +184,16 @@ static void *consumerFunction(void *arg) {
     struct prodConsArg *prodCons= ((struct prodConsArg *)arg);
     RecWinQueue *RecWinQ = (prodCons->queue);
 
-    float sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
+    int sleepTime = (-1 * log(drand48()) * (in_read_delay));
+
+    Pthread_mutex_lock(&QueueMutex);
+    printf("\n - - - - - - - - - - - - - Inside Consumer Thread - - - - - - - - - - - -\n");
+    printf(KYEL "Consumer Going to sleep for %d ms\n" RESET, sleepTime);
+    printf("\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+    Pthread_mutex_unlock(&QueueMutex);
     
     while (1) {
-        // TODO: Need to use sleep with msec
-        sleep(sleepTime);
+        Sleep(0, sleepTime);
        
         Pthread_mutex_lock(&QueueMutex);
         printf("\n - - - - - - - - - - - - - Inside Consumer Thread - - - - - - - - - - - -\n");
@@ -219,7 +224,7 @@ static void *consumerFunction(void *arg) {
         }
 
         sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
-        printf(KYEL "Consumer Going to sleep for %f\n" RESET, sleepTime);
+        printf(KYEL "Consumer Going to sleep for %d ms\n" RESET, sleepTime);
 
         printf("\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
         Pthread_mutex_unlock(&QueueMutex);

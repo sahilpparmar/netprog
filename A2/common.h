@@ -74,4 +74,6 @@ int fillPckt(TcpPckt *packet, uint32_t seqNum, uint32_t ackNum,
 int readPckt(TcpPckt *packet, int packet_size, uint32_t *seqNum,
         uint32_t *ackNum, uint32_t *winSize, char* dataPtr);
 
+void Sleep(int sec, int msec);
+
 #endif /* !_COMMON_H */
