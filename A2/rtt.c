@@ -112,7 +112,7 @@ rtt_timeout(struct rtt_info *ptr, uint32_t retransmitCnt) {
     ptr->rtt_rto = rtt_minmax(ptr->rtt_rto * 2);
     rtt_debug(ptr);
 
-    if (retransmitCnt > RTT_MAXNREXMT)
+    if (retransmitCnt >= RTT_MAXNREXMT)
         return(-1);			/* time to give up for this packet */
     return(0);
 }

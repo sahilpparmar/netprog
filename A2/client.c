@@ -118,10 +118,10 @@ send1HSAgain:
     alarm(CLIENT_TIMER);
     
     if (sigsetjmp(jmpFor2HS, 1) != 0) {
-        if (retransmitCount > MAX_RETRANSMIT) {
+        printf("\nReceiving 2nd HS (SYN-ACK): " _4TABS KRED "\tTimeout\n" RESET);
+        if (retransmitCount >= MAX_RETRANSMIT) {
             err_quit("Client Terminated due to 12 Timeouts");
         }
-        printf(KRED _4TABS "Timeout\n" RESET);
         goto send1HSAgain;
     } 
 
@@ -156,8 +156,6 @@ send3HSAgain:
         printf("Seq num: %d\t Ack num: %d\t" KYEL "2HS from Server\n" RESET, seqNum, ackNum);
         goto send3HSAgain;
     }
-    printf("Seq num: %d\t Bytes Read: %d\n", seqNum, len);
-    printf("New Packet received\n");
 
     // Initialize Receiving Window
     if (initializeRecWinQ(RecWinQ, &packet, len, in_receive_win)) {

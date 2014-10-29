@@ -9,8 +9,8 @@ static int getNextNewPacket(TcpPckt *pckt, uint32_t seq, uint32_t ack, uint32_t 
 static void printSendWindow(SendWinQueue *SendWinQ) {
     int i;
     printf(KBLU "Sending Window =>  ");
-    printf("Oldest SeqNum: %d  Next SeqNum: %d  Cwin: %d  SSFresh: %d  Contents:",
-            SendWinQ->oldestSeqNum, SendWinQ->nextNewSeqNum, SendWinQ->cwin, SendWinQ->ssfresh);
+    printf("Last In Flight SeqNum: %d  Next SeqNum: %d  Cwin: %d  SSThresh: %d  Contents:",
+            SendWinQ->oldestSeqNum, SendWinQ->nextNewSeqNum, SendWinQ->cwin, SendWinQ->ssThresh);
     for (i = 0; i < SendWinQ->winSize; i++) {
         if (IS_PRESENT(SendWinQ, i))
             printf(" %d", GET_SEQ_NUM(SendWinQ, i));
@@ -45,10 +45,18 @@ static void zeroOutRetransmitCnts(SendWinQueue *SendWinQ) {
 void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum) {
     SendWinQ->wnode         = (SendWinNode*) calloc(sendWinSize, sizeof(SendWinNode));
     SendWinQ->winSize       = sendWinSize;
-    SendWinQ->cwin          = min(sendWinSize, recWinSize); // TODO: Change to 1
+    SendWinQ->cwin          = 1;
     SendWinQ->oldestSeqNum  = nextSeqNum;
     SendWinQ->nextNewSeqNum = nextSeqNum;
-    SendWinQ->ssfresh       = 0;
+    SendWinQ->ssThresh      = sendWinSize;
+}
+
+static void incrementCwin(SendWinQueue *SendWinQ, int allAcksReceived, int advertisedWin) {
+    if ((allAcksReceived && IS_ADDITIVE_INC(SendWinQ)) ||
+        !(allAcksReceived || IS_ADDITIVE_INC(SendWinQ))
+    ) {
+        SendWinQ->cwin = min(SendWinQ->cwin + 1, min(SendWinQ->winSize, advertisedWin));
+    }
 }
 
 static sigjmp_buf jmpToSendFile, jmpToTerminateConn;
@@ -124,13 +132,18 @@ sendAgain:
 
         if (sigsetjmp(jmpToSendFile, 1) != 0) {
             printf(KRED "Receving ACKs => TIMEOUT\n" RESET);
-            int retransmitCnt = GET_OLDEST_SEQ_WNODE(SendWinQ)->numOfRetransmits;
-            if (rtt_timeout(&rttInfo, retransmitCnt)) {
-                char *str = "Server Child Terminated due to 12 Timeouts";
-                printf(KRED); err_msg(str); printf(RESET);
-                break;
+            if (SendWinQ->cwin != 0) {
+                int retransmitCnt = GET_OLDEST_SEQ_WNODE(SendWinQ)->numOfRetransmits;
+                if (rtt_timeout(&rttInfo, retransmitCnt)) {
+                    char *str = "Server Child Terminated due to 12 Timeouts";
+                    printf(KRED); err_msg(str); printf(RESET);
+                    break;
+                }
+                done = 0;
+                // Multiplicative Decrease: Set SSThresh (Cwin / 2) and Cwin = 1
+                SendWinQ->ssThresh = SendWinQ->cwin / 2;
+                SendWinQ->cwin = 1;
             }
-            done = 0;
             goto sendAgain;
         } 
 
@@ -143,16 +156,19 @@ sendAgain:
             readPckt(&packet, len, NULL, &ackNum, &winSize, NULL);
             printf("\nACK Received =>  ACK num: %d\t Advertised Win: %d\n", ackNum, winSize);
 
-            // TODO: Need to Change
-            SendWinQ->cwin = min(winSize, SendWinQ->winSize);
+            incrementCwin(SendWinQ, 0, winSize);
 
             if (SendWinQ->oldestSeqNum == ackNum) {
                 dupAcks++;
-                printf(KYEL "Duplicate ACK received\n" RESET);
                 if (dupAcks == 3) {
                     printf(KRED "3 Duplicate ACKs received. Enabling Fast Retransmit.\n" RESET);
                     done = 0;
+                    // Fast Recovery Mechanism: Set SSThresh and Cwin = (Cwin / 2)
+                    SendWinQ->ssThresh = SendWinQ->cwin / 2;
+                    SendWinQ->cwin = max(SendWinQ->ssThresh, 1);
                     break;
+                } else {
+                    printf(KYEL "%d Duplicate ACK(s) received\n" RESET, dupAcks);
                 }
             } else {
                 int once = 0;
@@ -175,6 +191,7 @@ sendAgain:
 
             if (expectedAckNum == ackNum) {
                 // All packets successfully sent and acknowledged
+                incrementCwin(SendWinQ, 1, winSize);
                 break;
             }
         }
@@ -201,9 +218,9 @@ sendFINAgain:
     alarm(FIN_ACK_TIMER);
 
     if (sigsetjmp(jmpToTerminateConn, 1) != 0) {
-        if (retransmitCount > MAX_RETRANSMIT) {
+        if (retransmitCount >= MAX_RETRANSMIT) {
             char *str = "Server Child Terminated due to 12 Timeouts";
-             err_msg(str); printf(RESET);
+            printf(KRED); err_msg(str); printf(RESET);
             return;
         }
         printf(KRED "TIMEOUT\n" RESET);
@@ -212,7 +229,10 @@ sendFINAgain:
 
     // Recv FIN-ACK from client
     printf(KYEL "Receving FIN-ACK => " RESET);
-    Read(connFd, (void *) &finAckPacket, DATAGRAM_SIZE);
+    do {
+        Read(connFd, (void *) &finAckPacket, DATAGRAM_SIZE);
+    } while (finAckPacket.seqNum != FIN_ACK_SEQ_NO);
+
     printf(KGRN "Received\n" RESET);
     printf(RESET);
     alarm(0);

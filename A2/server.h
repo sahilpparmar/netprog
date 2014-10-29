@@ -6,6 +6,7 @@
 
 #define GET_OLDEST_SEQ_IND(sendWinQ) (sendWinQ->oldestSeqNum%sendWinQ->winSize)
 #define GET_OLDEST_SEQ_WNODE(sendWinQ) (&(sendWinQ->wnode[GET_OLDEST_SEQ_IND(sendWinQ)]))
+#define IS_ADDITIVE_INC(sendWinQ) (sendWinQ->ssThresh <= sendWinQ->cwin)
 
 typedef struct client_request {
     struct sockaddr_in cliaddr;
@@ -25,9 +26,9 @@ typedef struct send_window_queue {
     SendWinNode *wnode;     // Sending window containing packets
     int winSize;            // Total sending window size
     int cwin;               // Current window size
-    int oldestSeqNum;       // Oldest sequence number in window
+    int oldestSeqNum;       // Last in flight / Oldest sequence number in window
     int nextNewSeqNum;      // Next new sequence number
-    int ssfresh;
+    int ssThresh;           // SSThresh value
 } SendWinQueue;
 
 void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum);
