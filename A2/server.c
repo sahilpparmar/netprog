@@ -123,6 +123,8 @@ static pid_t serveNewClient(struct sockaddr_in cliaddr, int *sock_fd, int req_so
         uint32_t seqNum, ackNum, winSize, timestamp, retransmitCnt;
         int len, connFd, newChildPortNo, send2HSFromConnFd;
         struct rtt_info rttInfo;
+        struct itimerval timer;
+
 
         // To get server IP address
         len = sizeof(struct sockaddr_in);
@@ -169,8 +171,7 @@ send2HSAgain:
         timestamp = rtt_ts(&rttInfo);
         retransmitCnt++;
         
-        // TODO: change alarm to setitimer
-        alarm(rtt_start(&rttInfo)/1000);
+        setTimer(&timer, rtt_start(&rttInfo));
 
         if (sigsetjmp(jmpbuf, 1) != 0) {
             printf(KRED "Receving Third HS => TIMEOUT\n" RESET);
@@ -187,7 +188,8 @@ send2HSAgain:
         // Receive third Handshake
         len = Recvfrom(connFd, &packet, DATAGRAM_SIZE, 0,  NULL, NULL);
 
-        alarm(0);
+        setTimer(&timer, 0);
+
         rtt_stop(&rttInfo, timestamp);
 
         readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);

@@ -1,4 +1,5 @@
 #include "client.h"
+#include "time.h"
 
 static char  in_server_ip[PARAM_SIZE];     // Server IP
 static int   in_server_port;               // Server PortNo
@@ -100,6 +101,8 @@ static int handshake(int sockfd, struct sockaddr_in servAddr, RecWinQueue *RecWi
     uint32_t seqNum, ackNum, winSize;
     char recvBuf[MAX_PAYLOAD+1];
     int newPortNo, retransmitCount, len;
+    struct itimerval timer;
+
     
     Signal(SIGALRM, sig_alarm);
     retransmitCount = 0;
@@ -114,8 +117,7 @@ send1HSAgain:
     printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
     ++retransmitCount;
 
-    // TODO: change alarm to setitimer
-    alarm(CLIENT_TIMER);
+    setTimer(&timer, CLIENT_TIMER);
     
     if (sigsetjmp(jmpFor2HS, 1) != 0) {
         printf("\nReceiving 2nd HS (SYN-ACK): " _4TABS KRED "\tTimeout\n" RESET);
@@ -131,7 +133,7 @@ send1HSAgain:
     readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
     printf("Seq num: %d\t Ack num: %d\n", seqNum, ackNum);
 
-    alarm(0);
+    setTimer(&timer, 0);
     newPortNo = atoi(recvBuf);
 
     // Reconnect to new port number
