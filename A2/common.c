@@ -133,15 +133,12 @@ int verifyIfLocalAndGetHostIP(struct ifi_info *ifihead,
         }
     }
 
-    isLocal = 0;
     if (local_ifi) {
-        if (host_ip)
-            host_ip->s_addr = IFI_ADDR(local_ifi);
-        if (!(local_ifi->ifi_flags & IFF_LOOPBACK))
-            isLocal = 1;
+        if (host_ip) host_ip->s_addr = IFI_ADDR(local_ifi);
+        isLocal = 1;
     } else if (arbitrary_ifi) {
-        if (host_ip)
-            host_ip->s_addr = IFI_ADDR(arbitrary_ifi);
+        if (host_ip) host_ip->s_addr = IFI_ADDR(arbitrary_ifi);
+        isLocal = 0;
     } else {
         isLocal = -1;
     }

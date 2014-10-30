@@ -9,8 +9,7 @@ static int getNextNewPacket(TcpPckt *pckt, uint32_t seq, uint32_t ack, uint32_t 
 static void printSendWindow(SendWinQueue *SendWinQ) {
     int i;
     printf(KBLU "Sending Window =>  ");
-    printf("Last In Flight SeqNum: %d  Next SeqNum: %d  Cwin: %d  SSThresh: %d  Contents:",
-            SendWinQ->oldestSeqNum, SendWinQ->nextNewSeqNum, SendWinQ->cwin, SendWinQ->ssThresh);
+    printf("Cwin: %d  SSThresh: %d  Contents:", SendWinQ->cwin, SendWinQ->ssThresh);
     for (i = 0; i < SendWinQ->winSize; i++) {
         if (IS_PRESENT(SendWinQ, i))
             printf(" %d", GET_SEQ_NUM(SendWinQ, i));
@@ -94,6 +93,7 @@ sendAgain:
             printf(KYEL "\nPROBE packet Sent to check receiver's window size\n" RESET);
 
         } else {
+            printf("\nPacket(s) Sent =>");
             for (i = 0; i < SendWinQ->cwin; i++) {
 
                 if (seqNum < SendWinQ->nextNewSeqNum) {
@@ -115,8 +115,7 @@ sendAgain:
                 Writen(connFd, (void *) &wnode->packet, len);
                 wnode->timestamp = rtt_ts(&rttInfo);
 
-                printf("\nPacket Sent =>\t Seq num: %d\t Total Bytes: %d\n", seqNum, len);
-                printSendWindow(SendWinQ);
+                printf("   %d", seqNum);
 
                 seqNum++;
 
@@ -126,6 +125,8 @@ sendAgain:
                     break;
                 }
             }
+            printf("\n");
+            printSendWindow(SendWinQ);
         }
 
         setTimer(&timer, rtt_start(&rttInfo));
