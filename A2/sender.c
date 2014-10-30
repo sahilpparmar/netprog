@@ -87,7 +87,7 @@ sendAgain:
 
         if (SendWinQ->cwin == 0) {
             // Congestion window size is 0. Send a Probe Message every PROBE_TIMER seconds.
-            sleep(PROBE_TIMER);
+            sleep(PROBE_TIMER/1000);
             len = fillPckt(&packet, PROBE_SEQ_NO, 0, 0, NULL, 0);
             Writen(connFd, (void *) &packet, len);
             printf(KYEL "\nPROBE packet Sent to check receiver's window size\n" RESET);

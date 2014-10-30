@@ -28,8 +28,8 @@
 #define MAX_RETRANSMIT  12
 
 #define HEADER_LEN      12
-#define DATAGRAM_SIZE   512
-#define MAX_PAYLOAD     (DATAGRAM_SIZE - HEADER_LEN)
+#define MAX_PAYLOAD     512
+#define DATAGRAM_SIZE   (MAX_PAYLOAD + HEADER_LEN)
 
 #define SYN_SEQ_NO      1
 #define SYN_ACK_SEQ_NO  2

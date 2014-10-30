@@ -202,7 +202,7 @@ static void *consumerFunction(void *arg) {
                 GET_WNODE(RecWinQ, i)->isPresent = 0;
                 RecWinQ->advertisedWin++;
 
-                printf("   %d", i);
+                printf("   %d(%d)", i, GET_DATA_SIZE(RecWinQ, GET_INDEX(RecWinQ, i)));
             }
             printf("\n");
             printRecWindow(RecWinQ);
