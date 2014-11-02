@@ -29,6 +29,7 @@ typedef struct send_window_queue {
     int oldestSeqNum;       // Last in flight / Oldest sequence number in window
     int nextNewSeqNum;      // Next new sequence number
     int ssThresh;           // SSThresh value
+    int advertisedWin;      // Receiver's advertised window size
 } SendWinQueue;
 
 void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum);

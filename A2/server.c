@@ -160,11 +160,11 @@ send2HSAgain:
         // Send second handshake
         len = fillPckt(&packet, SYN_ACK_SEQ_NO, ACK_SEQ_NO, 0, sendBuf, MAX_PAYLOAD);
         printf(KYEL);
-        printf("\nSecond HS sent from Listening Socket: New Conn Port No => %s\n" , packet.data);
+        printf("\nSecond HS sent from Listening Socket => New Conn Port No: %s\n" , packet.data);
         Sendto(sock_fd[req_sock], &packet, len, 0, (SA *) &cliaddr, sizeof(cliaddr));
 
         if (send2HSFromConnFd) {
-            printf("Second HS sent from Conn Socket: New Conn Port No => %s\n", packet.data);
+            printf("Second HS sent from Conn Socket => New Conn Port No: %s\n", packet.data);
             Sendto(connFd, &packet, len, 0, (SA *) &cliaddr, sizeof(cliaddr));
         }
         printf(RESET);
@@ -193,8 +193,8 @@ send2HSAgain:
         rtt_stop(&rttInfo, timestamp);
 
         readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-        printf(KGRN "\nThird HS received: Connection Establised Successfully\n" RESET);
-        printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
+        printf(KYEL "\nThird HS received =>  ACK num: %d\t Advertised Win: %d\n" RESET, ackNum, winSize);
+        printf(KGRN "Connection Establised Successfully\n" RESET);
 
         // Connect to Client addr
         Connect(connFd, (SA *) &cliaddr, sizeof(cliaddr));
@@ -266,8 +266,7 @@ static int listenAllConnections(struct ifi_info *ifihead, int *sockfd, int total
                     printf("\nNew request from client %son Local Interface => %s\n",
                             isLocal == 0 ? "Not " : "",
                             Sock_ntop((SA *) &cliaddr, sizeof(struct sockaddr_in)));
-                    printf(KGRN "First HS received: fileName => %s\n" RESET, recvBuf);
-                    printf("Seq num: %d\t Ack num: %d\t Win Size: %d\n", seqNum, ackNum, winSize);
+                    printf(KYEL "First HS received =>  fileName: %s\n" RESET, recvBuf);
 
                     // Block SIGCHLD until parent sets child pid in ClientRequest list
                     sigprocmask(SIG_BLOCK, &sigset, NULL);

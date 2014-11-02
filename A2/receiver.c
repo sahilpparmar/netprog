@@ -32,7 +32,7 @@ static void printRecWinNode(RecWinQueue *RecWinQ, int ind) {
 
 static void printRecWindow(RecWinQueue *RecWinQ) {
     int i;
-    printf(KBLU "Receving Window =>\t");
+    printf(KCYM "Receving Window =>\t");
     printf("Advertised WinSize: %d    Contents:", RecWinQ->advertisedWin);
     for (i = 0; i < RecWinQ->winSize; i++) {
         if (IS_PRESENT(RecWinQ, i))
@@ -46,14 +46,13 @@ static void printRecWindow(RecWinQueue *RecWinQ) {
 static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int packetSize) {
     if (packet->seqNum == FIN_SEQ_NO) {
         printf(KYEL "FIN packet received\n" RESET);
-        return 1;
+        return FIN_SEQ_NO;
     } else if (packet->seqNum == PROBE_SEQ_NO) {
         printf(KYEL "PROBE packet received\n" RESET);
-        return 0;
+        return PROBE_SEQ_NO;
     }
 
     RecWinNode *wnode = GET_WNODE(RecWinQ, packet->seqNum);
-    printf("Seq num: %d  ", packet->seqNum);
     printf(KYEL);
     if (wnode->isPresent) {
         // Duplicate packet arrived
@@ -83,7 +82,7 @@ static int addPacketToRecWin(RecWinQueue *RecWinQ, TcpPckt *packet, int packetSi
     printf(RESET);
 
     printRecWindow(RecWinQ);
-    return 0;
+    return packet->seqNum;
 }
 
 int initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize) {
@@ -114,10 +113,20 @@ void sendAck(RecWinQueue *RecWinQ, int fd) {
 static void sendFinAck(RecWinQueue *RecWinQ, int fd) {
     TcpPckt packet;
     
-    fillPckt(&packet, FIN_ACK_SEQ_NO, CLI_DEF_ACK_NO,
+    fillPckt(&packet, CLI_DEF_SEQ_NO, FIN_ACK_NO,
         RecWinQ->advertisedWin, NULL, 0);
 
     writeWithPacketDrops(fd, &packet, HEADER_LEN, "Sending FIN-ACK\t\t");
+
+}
+
+static void sendProbeAck(RecWinQueue *RecWinQ, int fd) {
+    TcpPckt packet;
+
+    fillPckt(&packet, CLI_DEF_SEQ_NO, PROBE_ACK_NO,
+        RecWinQ->advertisedWin, NULL, 0);
+
+    writeWithPacketDrops(fd, &packet, HEADER_LEN, "Sending PROBE-ACK\t");
 
 }
 
@@ -131,11 +140,15 @@ int writeWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
     return 1;
 }
 
-int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
+int readWithPacketDrops(int fd, TcpPckt *packet, size_t nbytes, char *msg) {
     int n;
     while (1) {
-        n = Read(fd, ptr, nbytes);
-        printf("\n%s: ", msg);
+        n = Read(fd, (void *) packet, nbytes);
+        printf("\n%s =>  ", msg);
+        if (packet->seqNum >= DATA_SEQ_NO)
+            printf("Seq num: %d", packet->seqNum);
+        else
+            printf(_2TABS);
         if (!isPacketLost()) {
             break;
         }
@@ -146,7 +159,7 @@ int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg) {
 
 static void *producerFunction(void *arg) {
     TcpPckt packet;
-    uint32_t seqNum, ackNum, winSize;
+    uint32_t seqNum;
     char recvBuf[MAX_PAYLOAD+1];
     int len, terminate;
 
@@ -157,17 +170,19 @@ static void *producerFunction(void *arg) {
 
     while (1) {
 
-        len = readWithPacketDrops(sockfd, (void *) &packet, DATAGRAM_SIZE,
+        len = readWithPacketDrops(sockfd, &packet, DATAGRAM_SIZE,
                 "Receiving next file packet");
 
         Pthread_mutex_lock(&QueueMutex);
-        terminate = addPacketToRecWin(RecWinQ, &packet, len);
+        seqNum = addPacketToRecWin(RecWinQ, &packet, len);
         Pthread_mutex_unlock(&QueueMutex);
 
-        if (terminate) {
+        if (seqNum == FIN_SEQ_NO) {
             // Received FIN - terminate connection
             terminateConnection(sockfd, RecWinQ, &packet, len);
             break;
+        } else if (seqNum == PROBE_SEQ_NO) {
+            sendProbeAck(RecWinQ, sockfd);
         } else {
             sendAck(RecWinQ, sockfd);
         }
@@ -186,28 +201,29 @@ static void *consumerFunction(void *arg) {
     int sleepTime;
 
     while (1) {
-        sleepTime = (-1 * log(drand48()) * (in_read_delay/1000));
-        Sleep(0, sleepTime);
+        sleepTime = (-1 * in_read_delay * log(drand48()));
+        usleep(sleepTime*1000);
        
         Pthread_mutex_lock(&QueueMutex);
         if ((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)) {
-            printf("\n - - - - - - - - - - - - - Inside Consumer Thread - - - - - - - - - - - -\n");
-            int i;
+            printf(KMAG "\n - - - - - - - - - - - - - Inside Consumer Thread - - - - - - - - - - - -\n" RESET);
+            int i, nBytes;
 
             printf("\nReading Packet(s) =>");
-            for (i = RecWinQ->consumerSeqNum; i != RecWinQ->nextSeqExpected; i++) {
+            for (i = RecWinQ->consumerSeqNum, nBytes = 0; i != RecWinQ->nextSeqExpected; i++) {
                 assert(IS_PRESENT(RecWinQ, GET_INDEX(RecWinQ, i)) &&
                         "Invalid Packet Contents in receiving window");
 
+                printf("   %d", i);
+
                 GET_WNODE(RecWinQ, i)->isPresent = 0;
                 RecWinQ->advertisedWin++;
-
-                printf("   %d(%d)", i, GET_DATA_SIZE(RecWinQ, GET_INDEX(RecWinQ, i)));
+                nBytes += GET_DATA_SIZE(RecWinQ, GET_INDEX(RecWinQ, i));
             }
             printf("\n");
             printRecWindow(RecWinQ);
 
-            printf("File Data Contents:\n");
+            printf("File Data Contents => (Total Bytes: %d)\n", nBytes);
             while ((RecWinQ->consumerSeqNum) != (RecWinQ->nextSeqExpected)) {
                 int wIndex = GET_INDEX(RecWinQ, RecWinQ->consumerSeqNum);
 
@@ -220,12 +236,12 @@ static void *consumerFunction(void *arg) {
                 RecWinQ->consumerSeqNum++;
 
                 if (GET_DATA_SIZE(RecWinQ, wIndex) != MAX_PAYLOAD) {
-                    printf("\n\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+                    printf(KMAG "\n\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n" RESET);
                     Pthread_mutex_unlock(&QueueMutex);
                     return;
                 }
             }
-            printf("\n\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n");
+            printf(KMAG "\n\n - - - - - - - - - - - - - Exiting Consumer Thread - - - - - - - - - - - -\n" RESET);
         }
         Pthread_mutex_unlock(&QueueMutex);
     }

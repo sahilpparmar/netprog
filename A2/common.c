@@ -191,10 +191,3 @@ int readPckt(TcpPckt *packet, int packet_size, uint32_t *seqNum,
     return 0;
 }
 
-void Sleep(int sec, int msec) {
-    struct timeval timeout;
-    timeout.tv_sec = sec;
-    timeout.tv_usec = msec;
-    Select(1, NULL, NULL, NULL, &timeout);
-}
-

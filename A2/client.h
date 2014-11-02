@@ -20,7 +20,7 @@ typedef struct rec_window_queue {
 extern float in_packet_loss;
 extern int   in_read_delay;
 int writeWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg);
-int readWithPacketDrops(int fd, void *ptr, size_t nbytes, char *msg);
+int readWithPacketDrops(int fd, TcpPckt *packet, size_t nbytes, char *msg);
 
 int initializeRecWinQ(RecWinQueue *RecWinQ, TcpPckt *firstPacket, int packetSize, int recWinSize);
 int fileTransfer(int *sockfd, RecWinQueue *RecWinQ);

@@ -35,12 +35,12 @@
 #define SYN_ACK_SEQ_NO  2
 #define ACK_SEQ_NO      3
 #define FIN_SEQ_NO      4
-#define FIN_ACK_SEQ_NO  5
+#define FIN_ACK_NO      5
 #define PROBE_SEQ_NO    6
+#define PROBE_ACK_NO    7
+#define CLI_DEF_SEQ_NO  8
 #define DATA_SEQ_NO     11
 
-#define CLI_DEF_SEQ_NO  0
-#define CLI_DEF_ACK_NO  0
 
 #define CLIENT_TIMER    3000 // millisec
 #define PROBE_TIMER     3000 // millisec
@@ -75,7 +75,5 @@ int readPckt(TcpPckt *packet, int packet_size, uint32_t *seqNum,
         uint32_t *ackNum, uint32_t *winSize, char* dataPtr);
 
 int setTimer(struct itimerval *timer, long int milliSec);
-
-void Sleep(int sec, int msec);
 
 #endif /* !_COMMON_H */

@@ -114,7 +114,6 @@ send1HSAgain:
 
     writeWithPacketDrops(sockfd, &packet, HEADER_LEN+strlen(in_file_name),
                         "Sending 1st HS (SYN)\t");
-    printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
     ++retransmitCount;
 
     setTimer(&timer, CLIENT_TIMER);
@@ -128,10 +127,9 @@ send1HSAgain:
     } 
 
     // Receive 2nd HS
-    len = readWithPacketDrops(sockfd, (void *) &packet,
+    len = readWithPacketDrops(sockfd, &packet,
             DATAGRAM_SIZE, "Receiving 2nd HS (SYN-ACK)");
     readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
-    printf("Seq num: %d\t Ack num: %d\n", seqNum, ackNum);
 
     setTimer(&timer, 0);
     newPortNo = atoi(recvBuf);
@@ -147,20 +145,19 @@ send3HSAgain:
     fillPckt(&packet, seqNum, ackNum, winSize, NULL, 0);
 
     writeWithPacketDrops(sockfd, &packet, HEADER_LEN, "Sending 3rd HS (ACK)\t");
-    printf("Seq num: %d\t Ack num: %d\t Win size: %d\n", seqNum, ackNum, winSize);
 
-    len = readWithPacketDrops(sockfd, (void *) &packet,
+    len = readWithPacketDrops(sockfd, &packet,
             DATAGRAM_SIZE, "Receiving 1st file packet");
     readPckt(&packet, len, &seqNum, &ackNum, &winSize, recvBuf);
 
     // Verify if packet is for 2HS or 1st file packet
     if (seqNum == SYN_ACK_SEQ_NO) {
-        printf("Seq num: %d\t Ack num: %d\t" KYEL "2HS from Server\n" RESET, seqNum, ackNum);
+        printf(KYEL "2HS from Server\n" RESET);
         goto send3HSAgain;
     }
 
     // Initialize Receiving Window
-    if (initializeRecWinQ(RecWinQ, &packet, len, in_receive_win)) {
+    if (initializeRecWinQ(RecWinQ, &packet, len, in_receive_win) == FIN_SEQ_NO) {
         // Received FIN - terminate connection
         terminateConnection(sockfd, RecWinQ, &packet, len);
         exit(0);
