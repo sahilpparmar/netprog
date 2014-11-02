@@ -7,10 +7,15 @@ static int getNextNewPacket(TcpPckt *pckt, uint32_t seq, uint32_t ack, uint32_t 
 }
 
 static void printSendWindow(SendWinQueue *SendWinQ) {
-    int i;
+    int i, nextSendInd;
+
     printf(KCYM "Sending Window =>  ");
     printf("Cwin: %d  SSThresh: %d  Contents:", SendWinQ->cwin, SendWinQ->ssThresh);
+    nextSendInd = GET_INDEX(SendWinQ, SendWinQ->nextSendSeqNum);
+
     for (i = 0; i < SendWinQ->winSize; i++) {
+        if (i == nextSendInd) printf(" |");
+
         if (IS_PRESENT(SendWinQ, i))
             printf(" %d", GET_SEQ_NUM(SendWinQ, i));
         else
@@ -40,23 +45,32 @@ static void zeroOutRetransmitCnts(SendWinQueue *SendWinQ) {
         SendWinQ->wnode[i].numOfRetransmits = 0;
     }
 }
-
-void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum) {
-    SendWinQ->wnode         = (SendWinNode*) calloc(sendWinSize, sizeof(SendWinNode));
-    SendWinQ->winSize       = sendWinSize;
-    SendWinQ->cwin          = 1;
-    SendWinQ->oldestSeqNum  = nextSeqNum;
-    SendWinQ->nextNewSeqNum = nextSeqNum;
-    SendWinQ->ssThresh      = sendWinSize;
-    SendWinQ->advertisedWin = recWinSize;
-}
-
 static void incrementCwin(SendWinQueue *SendWinQ, int allAcksReceived) {
     if ((allAcksReceived && IS_ADDITIVE_INC(SendWinQ)) ||
         !(allAcksReceived || IS_ADDITIVE_INC(SendWinQ))
     ) {
         SendWinQ->cwin = min(SendWinQ->cwin + 1, SendWinQ->winSize);
     }
+}
+
+static void updateAdditiveAckNum(SendWinQueue *SendWinQ) {
+    if (IS_ADDITIVE_INC(SendWinQ)) {
+        SendWinQ->additiveAckNum = SendWinQ->oldestSeqNum + SendWinQ->cwin;
+    } else {
+        SendWinQ->additiveAckNum = 0;
+    }
+}
+
+void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum) {
+    SendWinQ->wnode          = (SendWinNode*) calloc(sendWinSize, sizeof(SendWinNode));
+    SendWinQ->winSize        = sendWinSize;
+    SendWinQ->cwin           = 1;
+    SendWinQ->ssThresh       = sendWinSize;
+    SendWinQ->oldestSeqNum   = nextSeqNum;
+    SendWinQ->nextNewSeqNum  = nextSeqNum;
+    SendWinQ->nextSendSeqNum = nextSeqNum;
+    SendWinQ->advertisedWin  = recWinSize;
+    updateAdditiveAckNum(SendWinQ);
 }
 
 static sigjmp_buf jmpToSendFile, jmpToTerminateConn;
@@ -72,20 +86,20 @@ static void sigAlarmForSendingFIN(int signo) {
 void sendFile(SendWinQueue *SendWinQ, int connFd, int fileFd, struct rtt_info rttInfo) {
     SendWinNode *wnode;
     TcpPckt packet;
-    uint32_t seqNum, ackNum, winSize, expectedAckNum;
+    uint32_t seqNum, ackNum, winSize;
     int i, len, done, numPacketsSent, dupAcks;
     struct itimerval timer;
+    sigset_t sigset;
 
     Signal(SIGALRM, sigAlarmForSendingFile);
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGALRM);
 
     done = 0;
     while (!done) {
         zeroOutRetransmitCnts(SendWinQ);
 
 sendAgain:
-        // Send Packets
-        seqNum = SendWinQ->oldestSeqNum;
-
         if (SendWinQ->advertisedWin == 0) {
             // Receiver's advertised winSize is 0. Send a Probe Message every PROBE_TIMER seconds.
             sleep(PROBE_TIMER/1000);
@@ -94,14 +108,21 @@ sendAgain:
             printf(KYEL "\nPROBE packet Sent to check receiver's window size\n" RESET);
 
         } else {
-            printf("\nPacket(s) Sent ");
-            if (seqNum < SendWinQ->nextNewSeqNum) {
-                printf(KYEL "(Retransmission) =>" RESET);
-            } else {
-                printf(KGRN "(New) =>" RESET);
-            }
+            int once = 0;
 
-            for (i = 0; i < min(SendWinQ->cwin, SendWinQ->advertisedWin); i++) {
+            // Send Data Packets
+            seqNum = SendWinQ->nextSendSeqNum;
+            for (i = seqNum - SendWinQ->oldestSeqNum; i < min(SendWinQ->cwin, SendWinQ->advertisedWin); i++) {
+
+                if (!once) {
+                    printf("\nPacket(s) Sent ");
+                    if (seqNum < SendWinQ->nextNewSeqNum) {
+                        printf(KYEL "(Retransmission) =>" RESET);
+                    } else {
+                        printf(KGRN "(New) =>" RESET);
+                    }
+                    once = 1;
+                }
 
                 if (seqNum < SendWinQ->nextNewSeqNum) {
                     // Packet already in sending window
@@ -132,36 +153,48 @@ sendAgain:
                     break;
                 }
             }
-            printf("\n");
-            printSendWindow(SendWinQ);
+            if (once) {
+                printf("\n");
+                SendWinQ->nextSendSeqNum = seqNum;
+                printSendWindow(SendWinQ);
+            }
         }
 
         setTimer(&timer, rtt_start(&rttInfo));
 
         if (sigsetjmp(jmpToSendFile, 1) != 0) {
-            printf(KRED "Receving ACKs => TIMEOUT\n" RESET);
+            printf(KRED "\nReceving ACKs => TIMEOUT\n" RESET);
+
             if (SendWinQ->advertisedWin != 0) {
                 int retransmitCnt = GET_OLDEST_SEQ_WNODE(SendWinQ)->numOfRetransmits;
                 if (rtt_timeout(&rttInfo, retransmitCnt)) {
-                    char *str = "Server Child Terminated due to 12 Timeouts";
+                    char *str = "\nServer Child Terminated due to 12 Timeouts";
                     printf(KRED); err_msg(str); printf(RESET);
                     break;
                 }
                 done = 0;
+
                 // Multiplicative Decrease: Set SSThresh (Cwin / 2) and Cwin = 1
                 SendWinQ->ssThresh = SendWinQ->cwin / 2;
                 SendWinQ->cwin = 1;
+                updateAdditiveAckNum(SendWinQ);
+                SendWinQ->nextSendSeqNum = SendWinQ->oldestSeqNum;
             }
             goto sendAgain;
-        } 
+        }
 
-        expectedAckNum = seqNum;
         dupAcks = 0;
 
         // Receive ACKs
         while (1) {
+            // Unmask alarm handler routine
+            sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+
             len = Read(connFd, (void *) &packet, DATAGRAM_SIZE);
             readPckt(&packet, len, NULL, &ackNum, &winSize, NULL);
+
+            // Mask alarm handler routine
+            sigprocmask(SIG_BLOCK, &sigset, NULL);
 
             // Update advertised window size
             SendWinQ->advertisedWin = winSize;
@@ -178,9 +211,12 @@ sendAgain:
                     if (dupAcks == 3) {
                         printf(KRED "3 Duplicate ACKs received. Enabling Fast Retransmit.\n" RESET);
                         done = 0;
+
                         // Fast Recovery Mechanism: Set SSThresh and Cwin = (Cwin / 2)
                         SendWinQ->ssThresh = SendWinQ->cwin / 2;
                         SendWinQ->cwin = max(SendWinQ->ssThresh, 1);
+                        updateAdditiveAckNum(SendWinQ);
+                        SendWinQ->nextSendSeqNum = SendWinQ->oldestSeqNum;
                         break;
                     } else {
                         printf(KYEL "%d Duplicate ACK(s) received\n" RESET, dupAcks);
@@ -200,21 +236,39 @@ sendAgain:
                         SendWinQ->wnode[wInd].isPresent = 0;
                         SendWinQ->oldestSeqNum++;
 
+                        // Slow Start
                         incrementCwin(SendWinQ, 0);
                     }
-                    printSendWindow(SendWinQ);
-                    dupAcks = 0;
-                }
 
-                if (expectedAckNum == ackNum) {
-                    // All packets successfully sent and acknowledged
-                    incrementCwin(SendWinQ, 1);
+                    if (IS_ADDITIVE_INC(SendWinQ)) {
+                        if (SendWinQ->additiveAckNum == 0) {
+                            updateAdditiveAckNum(SendWinQ);
+
+                        } else if (SendWinQ->additiveAckNum <= SendWinQ->oldestSeqNum) {
+                            // Additive Increase
+                            incrementCwin(SendWinQ, 1);
+                            updateAdditiveAckNum(SendWinQ);
+                        }
+                    }
+
+                    // Update Sequence number to be sent next
+                    if (SendWinQ->nextSendSeqNum < SendWinQ->oldestSeqNum)
+                        SendWinQ->nextSendSeqNum = SendWinQ->oldestSeqNum;
+
+                    printSendWindow(SendWinQ);
+
+                    // No more packets to send. So receive all remaining ACKs.
+                    if (done && (SendWinQ->oldestSeqNum != SendWinQ->nextNewSeqNum)) {
+                        continue;
+                    }
                     break;
                 }
             }
         }
 
         setTimer(&timer, 0);
+        // Unmask alarm handler routine
+        sigprocmask(SIG_UNBLOCK, &sigset, NULL);
     }
 }
 
@@ -251,8 +305,8 @@ sendFINAgain:
         Read(connFd, (void *) &finAckPacket, DATAGRAM_SIZE);
     } while (finAckPacket.ackNum != FIN_ACK_NO);
 
+    setTimer(&timer, 0);
     printf(KGRN "Received\n" RESET);
     printf(RESET);
-    setTimer(&timer, 0);
 }
 

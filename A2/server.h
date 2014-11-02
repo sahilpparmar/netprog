@@ -26,10 +26,12 @@ typedef struct send_window_queue {
     SendWinNode *wnode;     // Sending window containing packets
     int winSize;            // Total sending window size
     int cwin;               // Current window size
+    int ssThresh;           // SSThresh value
     int oldestSeqNum;       // Last in flight / Oldest sequence number in window
     int nextNewSeqNum;      // Next new sequence number
-    int ssThresh;           // SSThresh value
+    int nextSendSeqNum;     // Next Sequence number to be sent
     int advertisedWin;      // Receiver's advertised window size
+    int additiveAckNum;     // Ack Num for which we increase Cwin under AIMD
 } SendWinQueue;
 
 void initializeSendWinQ(SendWinQueue *SendWinQ, int sendWinSize, int recWinSize, int nextSeqNum);
