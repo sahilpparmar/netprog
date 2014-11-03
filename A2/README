@@ -1,208 +1,167 @@
-README for CSE 533 Assignment 2 (Network Programming)
------------------------------------------------------
+README
+======
 
-Authors: Sahil Parmar (XXXXXXXX) #TODO
+CSE 533 Assignment 2 (Network Programming)
+------------------------------------------
+Authors: Sahil Parmar  (109242129)
          Himanshu Shah (109324380)
 
 In this assignment, we have implemented a reliable file transfer service in a
-client-service paradigm on top of an existing UDP connection. TCP like
-features have been implemented on top of this existing UDP connection to make
-the file transfer ordered and reliable.
+multi-client/server environment on top of an existing UDP connection.
+TCP like features have been implemented on top of existing UDP connection
+to make the file transfer ordered and reliable.
 
-Following are the some of the important changes that we have implemented as
-part of this assignment:
+Following are the some of the design details:
 
-1. Maintaining multiple listening sockets on the Server
--------------------------------------------------------
 
-- The server creates multiple UDP sockets to listening for incoming
-  connections, one for each interface. The get_ifi_info() routine has been
-  used to obtain information related to each interface. 
-  
-- We are NOT storing this information as it can be obtained from the request packet.
+1. Ensuring Unicast Addresses via multiple listening sockets on the Server
+==========================================================================
 
-#TODO
+- Using Get_ifi_info_plus() we get all the interfaces and create UDP listening
+  sockets for unicast addresses. We are NOT storing this interface information
+  as we are retaining the list obtained from Get_ifi_info_plus().
+
+- Next, for each client server connection, we maintain a list of all connections
+  storing following information:
+
+  - socketaddr_in structure of client address
+  - Child Pid
+  - Pointer to next node with client-server connection
+
+
 2. Modifications done to the RTT library functions in rtt.c and unprtt.h 
-------------------------------------------------------------------------
+========================================================================
 
-- Timers for detecting timeouts and retransmitting lost packets and
-  acknowledgements have been implemented using the rtt_* apis provided in
-  rtt.c. Since timeout values are in the sub-second range, we have used
-  itimers instead of alarm().
+- Smoothed Rtt and Variable Rtt is stored in multiples of 8 and 4 respectively.
 
-- The functions rtt_init(), rtt_ts(), rtt_start() and rtt_stop() have been
-  modified to measure time in microseconds rather than seconds. This
-  modification has been done as the measured RTT in the compserv and sbpub
-  machines were in the sub-second range.
+- rtt_stop() function is modified to use integer shift operations.
 
-- All the rtt_* functions have been modified to compute and store RTT and
-  Smoothed RTT values as integers rather than floats. As part of this, struct
-  rtt_info has been modified to store rtt_rtt, rtt_srtt, rtt_rto and rtt_base
-  as type int rather than float.
+- All measurements are done using integers rather than floats.
 
-#TODO 
-3. Flow Control and Congestion Control implementation
------------------------------------------------------
+- All values are stored in terms of milliseconds.
 
-Window Size
------------
 
-  The sender and the receiver window size is specified in the server.in and
-  client.in files respectively. On the server, this parameter represents the
-  maximum size the congestion window can grow to. On the receiver, this
-  represents the maximum number of packets that can be buffered.
+3. ARQ Mechanisms
+=================
 
 Slow Start
 ----------
-#TODO 
-  The server will initially be in the slow start phase with a congestion
-  window size of 1. For every valid acknowledgement received, it increases it's
-  window by 1 MSS (1 packet of 512 bytes in our case). Thus, for the first
-  ack, window grows from 1 to 2 and 2 packets are sent in the next iteration.
-  Both the acks will be received in the same RTT initially, so the window
-  grows from 2 to 4, effectively doubling each time. This continues till the
-  server either times out on an acknowledgement or the SS threshold is hit
-  (Initial value is set to the receiver's window size advertised during
-   connection establishment).
+  The server will initially be in the slow start phase with cwin = 1.
+  Then for every valid ACK received, we increase cwin by 1.
+  Thus, for the 1st ACK, cwin increments from 1 to 2 and 2 packets are
+  sent in the next iteration.
+  This continues till the server either times out on an ACK or cwin >= SSThresh.
+  (Initial value of SSThresh is set to sender's window size)
 
-  In every iteration, the server tries to send as many packets as possible.
-  This packet count is the minimum of the following 3 parameters:
-
-  - Current free slots in the server's congestion window
-  - Advertised window size of the receiver
-  - Number of packet's still pending to be sent in the server's buffer
-
-Congestion Avoidance
---------------------
-#TODO 
+Congestion Avoidance (Additive-Increase/Multiplicative Decrease)
+----------------------------------------------------------------
   Whenever the server times out or gets 3 consecutive duplicate
   acknowledgements, it moves from slow start to congestion avoidance phase.
   In this phase, the congestion window grows linearly rather than
-  exponentially. The current congestion window size is halved and stored as the
-  new SS threshold. Whenever the congestion window size grows beyond the SS
-  threshold, the window size is increased linearly instead of exponential
-  increase. This is implemented by counting the number of valid acks and
-  increasing the window by 1 MSS only when 'congestion-window size' number of
-  vaalid acknowledgements are received.
+  exponentially. The current cwin is halved and stored as the
+  new SSThresh. Whenever the congestion window size grows beyond the SSThresh,
+  the window size is increased linearly instead of exponential
+  increase (AIMD). This is implemented by counting the number of valid acks and
+  increasing cwin by 1 only when 'cwin' number of valid ACKs are received.
 
-Handling Cumulative acks
+Handling Cumulative ACKs
 ------------------------
-#TODO 
-  When packet drops are triggered, the server receives duplicate
-  acknowledgements for lost packets. When the lost packets are retransmitted,
-  the client may acknowledge multiple packets at once. This comes as a
-  cumulative ack to the server. Here, we have 2 cases:
+  When packet drops are triggered, the server receives DUP ACKs for lost packets.
+  When the lost packets are retransmitted, the client may acknowledge multiple
+  packets at once. This comes as a cumulative ACK to the server.
 
-  - All the acked packets are in the congestion window. In this case, we
-    simply slide our window by updating the start aand end pointers. We also
-    update the window size accordingly based on the current congestion state.
+Fast Recovery
+-------------
+  When a packet is lost and the server times out, cwin is halved and assigned as
+  new SSThresh. Server moves back to slow start phase with cwin = 1.
+  It moves to congestion avoidance once cwin >= SSThresh.
 
-  - The cumulative ack is greater than the highest numbered packet in the
-    sender's congestion window. This happens if the server as shrunk his
-    congestion window and the receiver then sends a cumulative ack. In this
-    case, all the packets in the congestion window are acknowledged. So, we
-    drain the congestion window and start from the next unacknowledged packet.
-
-Handling duplicate acknowledgements: Fast Retransmit and Fast Recovery
-----------------------------------------------------------------------
-#TODO 
-  When a packet is lost and the server times out, we half the current window
-  size and store it as the new threshold. The server moves back to slow start
-  phase with window size of 1. It moves to congestion avoidance once the
-  window size grows beyond the new SS threshold.
-
-  When the server receives 3 duplicaate acks, it stops its timer and
-  retransmits the lost packet immediately. This is the fast retransmit phase.
-  After the retransmit, it again shrinks its window by half and stores this
-  new size as the updated SS threshold. However, this time, instead of going
+Fast Retransmit
+---------------
+  When the server receives 3 DUP ACKs, it stops its timer and retransmits the
+  lost packets immediately. In this process, it shrinks its cwin by half and
+  stores this size as the new SSThresh. However, this time, instead of going
   back to the slow start phase, it directly starts from the congestion
-  avoidance phase (starting window size = SS threshold value). This conforms
-  with the implementation of fast recovery in TCP.
+  avoidance phase (i.e. newCwin = SSThresh = oldCwin/2).
 
-Persist Mode implementation on the server
------------------------------------------
-#TODO 
+Probe Message when Advertised WinSize = 0
+------------------------------------------
   Whenever the client's advertised window becomes full (this happens when the
   consumer thread sleeps for a longer duration), it sends the next
-  acknowledgement with a window size of 0. When the server receives an
-  acknowledgement with window size 0, it goes to the persist state. It starts
-  the persist timer (5 second timer) and waits for the window to open up. When
-  the timer expires, it sends a probe message to the client. If the client's
-  window has openedup, it sends a duplicate acknowledgement with a non-zero
-  window size. Otherwise it still advertises a window size of 0. As long as
-  the server gets acknowledgements with window size 0, it stays in the persist
-  mode by restarting the persist timer. The moment it gets an acknowledgement
-  with a non-zero window value, it comes out of the persist mode and resumes
-  sending packets from the next sequence number.
+  ACK with advertised window size of 0. When the server receives an
+  ACK with window size 0, it goes to the persist state. It starts
+  the persist timer (3 second timer) and waits for the window to open up. When
+  the timer expires, it sends a probe message to the client. In response, the
+  client sends a Probe-Ack with current window size. As long as the server
+  gets ACKs with window size 0, it stays in the persist mode by restarting
+  the persist timer. The moment it gets an Probe-ACK with a non-zero
+  window value, it comes out of the persist mode and resumes sending packets
+  from the next sequence number.
 
-Timer implementation #TODO Check
---------------------
+Implementation of Congestion window
+-----------------------------------
+  Congestion Sliding window is implemented as a circular queue and the state is
+  maintained with help of below parameters:
 
-  In the actual TCP implementation, each segment is timed separately. However,
-  in our implementation, we maintain one timer for the whole congestion
-  window. This timer is always associated with the first unacknowledged packet
-  in the sender's congestion window.
-
-Implementation of Congestion window and Advertised window
----------------------------------------------------------
-#TODO 
-  Both the congestion window and advertised window are implemented as circular
-  buffers with the following 4 parameters: Start, End, Free and Size
-
-  cwnd_start: Points to the first unacknowledged packet. Updated whenever a
-              valid ack is received.
-  cwnd_end: Points to the first free slot. Updated whenever a packet is sent.
-  cwnd_free: Represents the number of free slots
-  cwnd_size: Current size of the congestion window.
-
-  advw_start: Points to the first unread packet. Updated whenever the consumer
-              packet drains the advertised window.
-  advw_end: Points to the first free slot in the advertised window. Updated by
-            the RUDP thread whenever it receives a packet and the window is
-            not full.
-  advw_free: Represents the number of free slots (Advertised window sent as
-                                                  part of each ack)
-  advw_size: Size of the advertised window
+    winSize:        Max sending window size (obtained from server.in)
+    cwin:           Current congestion window size
+    ssThresh:       SSThresh value
+    oldestSeqNum:   Oldest sequence number in window (Points to first unAcked packet)
+    nextNewSeqNum:  Next new sequence number to be used
+    nextSendSeqNum: Next Sequence number to be sent
+    advertisedWin:  Receiver's advertised window size
+    additiveAckNum: Ack Num for which we increase Cwin under AIMD
 
 Structure of the message header
 -------------------------------
 
-Every packet sent by the server has the following header:
+Every packet sent/received by the server/client has the following header:
 
 +-----------------+
-|   SEQUENCE      |
+|   SEQUENCE(4)   |
 |-----------------|
-|   ACK NUMBER    |
+|   ACK_NUMBER(4) |
 |-----------------|
-|  WINDOW SIZE    |
+|  WINDOW_SIZE(4) |
 +-----------------+
 |                 |
-|     DATA        |
-.                 . 
-.-----------------.
+|     DATA(512)   |
+|                 | 
++-----------------+
 
-SEQUENCE: is incremented for every new packet sent
+SEQUENCE:       incremented for every new packet sent
 
-ACK Number:  represents the next packet the client is expecting
+ACK_Number:     represents the next packet client is expecting
 
-WINDOW SIZE: Represents the advertized window from the client
+WINDOW_SIZE:    Represents the advertized window from client
 
-4. Clean termination of the program after file transfer #TODO
--------------------------------------------------------
+DATA:           512 bytes data sent/received by server/client
+
+
+4. Clean termination of the program after file transfer
+=======================================================
+
 Server Implementation
+---------------------
 
-When the server gets the  acknowlegdement for the last data packet,
-it sends out a Packet containing the SEQUENCE number: FIN_SEQ_NO
-This message type is interpreted by the client as the end of file transfer.
-To which it responds by sending a message with sequence number: FIN_ACK_NO
+  When the server gets the  acknowlegdement for the last data packet,
+  it sends out a Packet containing the sequence number: FIN_SEQ_NO
+  This message type is interpreted by the client as the end of file transfer.
+  To which it responds by sending a message with ack number: FIN_ACK_NO
+  
+  The server process (child) keeps re-transmitting the FIN Message until
+  it receives an FIN-ACK from the client or the number of retransmission exceeds
+  the maximum retries. 
+  
+  On recieving FIN-ACK packet the server (child) process exits.
 
-The server process ( child ) keeps re-transmitting the FIN Message until it receives an ACK from the client
-or the number of retransmission exceeds the maximum retries. 
+Client Implementation
+---------------------
+  On Recieving the FIN message from the server, the client sends the FIN_ACK
+  to the server and exits gracefully.
 
-On recieving the Ack for the FIN packet the server( child ) process exits.
+We have also introduced a mechanism where server sends an error message with
+FIN packet. For e.g., if the requested file is not available on server, an
+appropriate message is sent to client with FIN packet.
 
-
-Client Implementation :
-On Recieving the FIN message from the server, the client sends the FIN_ACK to the server.
-
-END OF FILE
+================================================================================

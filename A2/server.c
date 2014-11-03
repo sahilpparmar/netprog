@@ -176,7 +176,7 @@ send2HSAgain:
         if (sigsetjmp(jmpbuf, 1) != 0) {
             printf(KRED "Receving Third HS => TIMEOUT\n" RESET);
             if (rtt_timeout(&rttInfo, retransmitCnt)) {
-                char *str = "Server Child Terminated due to 12 Timeouts";
+                char *str = "\nServer Child Terminated due to 12 Timeouts";
                 printf(KRED); err_msg(str); printf(RESET);
                 strcpy(errMsg, str);
                 goto error;
@@ -202,7 +202,7 @@ send2HSAgain:
 
         int fileFd;
         if ((fileFd = open(fileName, O_RDONLY)) == -1) {
-            char *str = "Server Child Terminated due to Invalid FileName";
+            char *str = "\nServer Child Terminated due to Invalid FileName";
             printf(KRED); err_msg(str); printf(RESET);
             strcpy(errMsg, str);
             goto error;
@@ -217,7 +217,6 @@ error:
         exit(0);
     } // End - Child Process
     
-    sleep(2);
     return pid;
 } 
 

@@ -1,7 +1,7 @@
-127.0.0.1 // Server IP 172.24.31.22
-5445      // Server PortNo
-data.file // FileName to be transfered
-10         // Size of receiving sliding window
-19         // Random Gen Seed Value
-0.2      // Probability of packet loss
-1000        // mean millisec at which client reads data from receving window
+127.0.0.1   // Server IP 172.24.31.22
+5445        // Server PortNo
+data.file   // FileName to be transfered
+10          // Size of receiving sliding window
+10          // Random Gen Seed Value
+0.2         // Probability of packet loss
+20          // mean millisec at which client reads data from receving window

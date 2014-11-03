@@ -27,7 +27,7 @@ typedef struct send_window_queue {
     int winSize;            // Total sending window size
     int cwin;               // Current window size
     int ssThresh;           // SSThresh value
-    int oldestSeqNum;       // Last in flight / Oldest sequence number in window
+    int oldestSeqNum;       // Oldest sequence number in window
     int nextNewSeqNum;      // Next new sequence number
     int nextSendSeqNum;     // Next Sequence number to be sent
     int advertisedWin;      // Receiver's advertised window size
