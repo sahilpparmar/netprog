@@ -1,8 +1,8 @@
 CC = gcc
 
 #HOME=/home/courses/cse533/Stevens/unpv13e_solaris2.10
-#HOME=/home/sahil/netprog/unpv13e
-HOME=/home/dexter/Desktop/Shared/hgfs/SBU-Courses/NP/Assignment/code-ubuntu/netprog/unpv13e
+HOME=/home/sahil/netprog/unpv13e
+#HOME=/home/dexter/Desktop/Shared/hgfs/SBU-Courses/NP/Assignment/code-ubuntu/netprog/unpv13e
 #-lsocket 
 LIBS = -lresolv -lnsl -lpthread -lm\
 	${HOME}/libunp.a\
