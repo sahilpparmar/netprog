@@ -20,6 +20,8 @@ int main() {
     getFullPath(filePath, CLI_FILE, sizeof(filePath), TRUE);
     sockfd = createAndBindUnixSocket(filePath);
     hostNode = getHostVmNodeNo();
+    getIPByVmNode(hostIP, hostNode);
+    printf("Client running on VM%d (%s)\n", hostNode, hostIP);
 
     Signal(SIGINT, sig_int);
     Signal(SIGALRM, sig_alarm);

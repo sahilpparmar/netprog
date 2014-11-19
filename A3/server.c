@@ -1,6 +1,6 @@
 #include "common.h"
 
-static char filePath[1024], hostNode;
+static char filePath[1024], hostNode, hostIP[100];
 
 static void sig_int(int signo) {
     unlink(filePath);
@@ -15,6 +15,8 @@ int main() {
     getFullPath(filePath, SER_FILE, sizeof(filePath), FALSE);
     sockfd = createAndBindUnixSocket(filePath);
     hostNode = getHostVmNodeNo();
+    getIPByVmNode(hostIP, hostNode);
+    printf("Server running on VM%d (%s)\n", hostNode, hostIP);
 
     Signal(SIGINT, sig_int);
     while (1) {

@@ -1,12 +1,12 @@
 #ifndef _ODR_H
 #define _ODR_H
 
-#define IPLEN 30
 #define PROTOCOL_NUMBER 0x5445
-#define MAX_INTERFACE 7 //TODO
-#define TOTAL_NODES 10
-#define STALENESS 5 // TODO get from client
-#define MAX_PAYLOAD_LEN 100 //TODO verify
+#define IPLEN           30      // bytes
+#define STALENESS       5       // sec (TODO get from client)
+#define MAX_PAYLOAD_LEN 100     // bytes
+#define FP_MAP_STALE_VAL 5      // sec
+#define FIRST_CLI_PORTNO 4000
 
 // Packet Type
 typedef enum {
@@ -63,7 +63,8 @@ typedef struct {
 typedef struct {
     char filePath[1024];
     int portNo;
-    //TODO timestamp
+    uint32_t timestamp;
+    bool isValid;
 } FilePortMap;
 
 extern char filePath[1024], hostNode, hostIP[100];

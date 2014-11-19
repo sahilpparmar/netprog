@@ -86,6 +86,7 @@ void printPacket(EthernetFrame *etherFrame,uint32_t length) {
 
     return;
 }
+
 int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16_t outIfaceNum, int socket) {
 
     int retVal;
@@ -125,6 +126,7 @@ int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16
     }
     return;
 }
+
 // Function that would check and clear up waiting packets in the buffer
 int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList) {
 
@@ -332,7 +334,7 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
     /*address length*/
     listenFilter.sll_halen    = ETH_ALEN;
 
-  for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
+    for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
         printInterface(hwa);
 
         if ((strcmp(hwa->if_name, "lo") != 0) && (strcmp(hwa->if_name, "eth0") != 0)) {
@@ -344,7 +346,6 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
             memcpy(((*ifaceSockList)[index]).ifaceMAC, hwa->if_haddr, 6); // MAC = 6
             FD_SET((*ifaceSockList)[index].ifaceSocket, fdSet);
             listenFilter.sll_ifindex = hwa->if_index;
-            //TODO: Bind error
             Bind((*ifaceSockList)[index].ifaceSocket, (struct sockaddr *) &listenFilter, sizeof(listenFilter));
             index++;
         }
@@ -357,7 +358,7 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
 
 
 int main() {
-    RoutingTable routes[TOTAL_NODES + 1];
+    RoutingTable routes[TOTAL_VMS + 1];
     IfaceInfo *ifaceSockList;
     int totalIfaceSock, unixSockFd, filePortMapCnt;
     fd_set fdSet;
@@ -373,9 +374,9 @@ int main() {
     initFilePortMap();
 
     // Create Unix domain socket
-//    getFullPath(filePath, ODR_FILE, sizeof(filePath), FALSE);
-//    unixSockFd = createAndBindUnixSocket(filePath);
-//    FD_SET(unixSockFd, &fdSet);
+    getFullPath(filePath, ODR_FILE, sizeof(filePath), FALSE);
+    unixSockFd = createAndBindUnixSocket(filePath);
+    FD_SET(unixSockFd, &fdSet);
 
     // Create interface sockets
     totalIfaceSock = createIfaceSockets(&ifaceSockList, &fdSet);

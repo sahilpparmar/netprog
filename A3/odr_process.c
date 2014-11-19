@@ -7,23 +7,43 @@ static int filePortMapCnt;
 static int nextPortNo;
 
 void initFilePortMap() {
+    // Save server filePath <-> portNo map
     getFullPath(filePortMap[0].filePath, SER_FILE, sizeof(filePortMap[0].filePath), FALSE);
     filePortMap[0].portNo = SER_PORT;
+    filePortMap[0].timestamp = time(NULL);
+    filePortMap[0].isValid = TRUE;
+
     filePortMapCnt = 1;
-    nextPortNo = 4000;
+    nextPortNo = FIRST_CLI_PORTNO;
 }
 
 static int getPortNoByFilePath(char *filePath) {
     int i;
 
-    for (i = 0; i < filePortMapCnt; i++) {
-        if (strcmp(filePath, filePortMap[i].filePath) == 0) {
-            return filePortMap[i].portNo;
+    // Check for server port number
+    if (strcmp(filePath, filePortMap[0].filePath) == 0) {
+        return filePortMap[0].portNo;
+    }
+
+    for (i = 1; i < filePortMapCnt; i++) {
+        if (filePortMap[i].isValid) {
+            if ((time(NULL) - filePortMap[i].timestamp) < FP_MAP_STALE_VAL) {
+                if (strcmp(filePath, filePortMap[i].filePath) == 0) {
+                    return filePortMap[i].portNo;
+                }
+            } else {
+                filePortMap[i].isValid = FALSE;
+                break;
+            }
+        } else {
+            break;
         }
     }
     strcpy(filePortMap[i].filePath, filePath);
     filePortMap[i].portNo = nextPortNo++;
-    filePortMapCnt++;
+    filePortMap[i].timestamp = time(NULL);
+    filePortMap[i].isValid = TRUE;
+    if (i == filePortMapCnt) filePortMapCnt++;
 
     return filePortMap[i].portNo;
 }
