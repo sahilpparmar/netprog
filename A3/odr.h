@@ -41,10 +41,10 @@ typedef struct {
 } IfaceInfo;
 
 
-typedef struct {
-    EthernetFrame frame;
-    EthernetFrame *next;
-} WaitingFrame;
+typedef struct WaitingPacket {
+    ODRPacket packet;  
+    struct WaitingPacket *next;
+} WaitingPacket;
 
 // Routing Table
 typedef struct {
@@ -54,5 +54,5 @@ typedef struct {
     uint8_t nextHopMAC[6];
     uint32_t hopCount;
     uint32_t timeStamp;
-    WaitingFrame* waitListHead;
+    WaitingPacket* waitListHead;
 } RoutingTable; // The index of the routingTable array will give the destination index
