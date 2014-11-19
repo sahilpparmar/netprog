@@ -15,7 +15,9 @@ void msg_send(int sockfd, char *destIP, int destPort, char *msg, int forceRedisc
     char buffer[1024];
 
     memcpy(apiData.data, msg, strlen(msg));
+    apiData.data[strlen(msg)] = '\0';
     memcpy(apiData.canonicalIP, destIP, strlen(destIP));
+    apiData.canonicalIP[strlen(destIP)] = '\0';
     apiData.port = destPort;
     apiData.forceRediscovery = forceRediscovery;
     
@@ -34,7 +36,9 @@ int msg_recv(int sockfd, char *msg, char *srcIP, int *srcPort) {
     Recvfrom(sockfd, &apiData, sizeof(apiData), 0,  NULL, NULL);
 
     memcpy(msg, apiData.data, strlen(apiData.data));
+    msg[strlen(apiData.data)] = '\0';
     memcpy(srcIP, apiData.canonicalIP, strlen(apiData.canonicalIP));
+    srcIP[strlen(apiData.canonicalIP)] = '\0';
     *srcPort = apiData.port;
 
     return strlen(msg);

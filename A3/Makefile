@@ -11,11 +11,13 @@ CFLAGS = ${FLAGS} -I${HOME}/lib
 
 all: odr server client
 
-odr: get_hw_addrs.o odr.o common.o api.o
+odr: get_hw_addrs.o odr.o common.o odr_process.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 odr.o: odr.c
 	${CC} ${CFLAGS} -c -o $@ $^
 get_hw_addrs.o: get_hw_addrs.c
+	${CC} ${CFLAGS} -c -o $@ $^
+odr_process.o: odr_process.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
 server: server.o common.o api.o
