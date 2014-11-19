@@ -1,6 +1,13 @@
 #include "common.h"
 
+static char filePath[1024], hostNode, hostIP[100];
 static sigjmp_buf jmpToRetransmit;
+
+static void sig_int(int signo) {
+    unlink(filePath);
+    exit(0);
+}
+
 static void sig_alarm(int signo) {
     siglongjmp(jmpToRetransmit, 1);
 }
@@ -10,37 +17,45 @@ int main() {
     char buffer[1024];
     int sockfd;
 
-    sockfd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
+    getFullPath(filePath, CLI_FILE, sizeof(filePath), TRUE);
+    sockfd = createAndBindUnixSocket(filePath);
+    hostNode = getHostVmNodeNo();
 
-    bzero(&cliAddr, sizeof(cliAddr));
-    cliAddr.sun_family = AF_LOCAL;
-    strcpy(cliAddr.sun_path, getFullPath(buffer, CLI_FILE, sizeof(buffer), TRUE));
-
-    Bind(sockfd, (SA*) &cliAddr, sizeof(cliAddr));
-
+    Signal(SIGINT, sig_int);
     Signal(SIGALRM, sig_alarm);
-
     while (1) {
         char serverIP[100];
         int serverNode, serverPort;
         bool forceRediscovery = FALSE;
 
-        printf("Choose Server VM Node Number from VM1-VM10: ");
-        if ((scanf("%d", &serverNode) != 1) || serverNode < 1 || serverNode > 10) {
-            err_quit("\nInvalid Option! Exiting! Thank you!\n");
+        printf("\nChoose Server VM Node Number from VM1-VM10: ");
+        if ((scanf("%d", &serverNode) != 1) || serverNode < 1 || serverNode > TOTAL_VMS) {
+            break;
         }
+        if (getIPByVmNode(serverIP, serverNode) == NULL) {
+            err_msg("Warning: Unable to get IP address, using hostname instead"); 
+            sprintf(serverIP, "vm%d", serverNode);
+        }
+        serverPort = SER_PORT;
 
 jmpToRetransmit:
-        msg_send(sockfd, canonicalIP[serverNode], SER_PORT, NULL, forceRediscovery);
+        msg_send(sockfd, serverIP, serverPort, "", forceRediscovery);
 
         alarm(CLI_TIMEOUT);
 
         if (sigsetjmp(jmpToRetransmit, 1) != 0) {
             forceRediscovery = TRUE;
+            printf("Client at node vm%d: timeout on response from %s\n", hostNode, serverIP);
             goto jmpToRetransmit;
         }
 
         msg_recv(sockfd, buffer, serverIP, &serverPort);
+        alarm(0);
+        printf("Client at node vm%d: recevied from %s => %s\n", hostNode, serverIP, buffer);
     }
+
+    err_msg("\nExiting! Thank you!\n");
+    unlink(filePath);
+    Close(sockfd);
 }
 

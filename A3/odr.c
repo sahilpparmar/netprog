@@ -6,6 +6,13 @@
 #include "common.h"
 #include "odr.h"
 
+static char filePath[1024], hostNode, hostIP[100];
+
+static void sig_int(int signo) {
+    unlink(filePath);
+    exit(0);
+}
+
 void printInterface(struct hwa_info *hwa) {
     struct sockaddr	*sa;
     char   *ptr;
@@ -119,7 +126,7 @@ int sendAllInterface(ODRPacket *packet, int exceptInterface, int nextHop, unsign
     int retVal;
     int index;
 
-    for(index = 0; index < totalSockets; index++) {
+    for(index = 0; index < totalIfaceSock; index++) {
         send_result = sendto(sockets[index], ,ETH_FRAME_LEN, 0, (struct sockaddr *)&)
         
     }
@@ -138,7 +145,7 @@ int  sendonInterface(int index, int nextHop, unsigned char nextHopMAC[], unsigne
 
 /*
 
-int handleRREQ(ODRPacket *packet, unsigned char nextHopMac[6], routingTable *routes, int* sockets, int incomingInter, int totalSockets,int sourceIndex ) {
+int handleRREQ(ODRPacket *packet, unsigned char nextHopMac[6], routingTable *routes, int* sockets, int incomingInter, int totalIfaceSock,int sourceIndex ) {
     // Return 0 - Nothing needs to be done: New entry - Send RREQs
     // Return 1 - Have the entry, so sending RREP to the requestor as well as send RREQs on other interfaces with blah
     // Check if entry is present
@@ -155,7 +162,7 @@ int handleRREQ(ODRPacket *packet, unsigned char nextHopMac[6], routingTable *rou
     // Logic for flooding RREPS, or replying with RREQs
 }
 */
-void processFrame(ethernetFrame *etherFrame, routingTable *routes, int *sockets, int inSockIndex, int totalSockets) {
+void processFrame(ethernetFrame *etherFrame, routingTable *routes, int *sockets, int inSockIndex, int totalIfaceSock) {
     
     unsigned char broadMAC[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     unsigned int  sourceIndex, destIndex;
@@ -170,7 +177,7 @@ void processFrame(ethernetFrame *etherFrame, routingTable *routes, int *sockets,
             printf("RREQ packet received!\n");
             //retval = handleRREQ();
 //            sourceIndex = getSourceIndex(packet->sourceIP);
- //           handleRREQ(packet, nextHopMac, routes, sockets, incomingInter, totalSockets);
+ //           handleRREQ(packet, nextHopMac, routes, sockets, incomingInter, totalIfaceSock);
             break;
    
         case RREP: // RREP packet
@@ -188,66 +195,63 @@ void processFrame(ethernetFrame *etherFrame, routingTable *routes, int *sockets,
     } // Switch
 
 }
-int readSockets(int* sockets, int totalSockets, fd_set FDSet, routingTable* routes) {
+int readAllSockets(int unixSockFd, int* sockets, int totalIfaceSock, fd_set fdSet, routingTable* routes) {
     int maxfd, index;
     int length = 0; /*length of the received frame*/ 
     ethernetFrame etherFrame; /*Buffer for ethernet frame*/
-    fd_set tempFDSet;
+    fd_set readFdSet;
 
-    maxfd = sockets[totalSockets-1] + 1;
+    //maxfd = max(unixSockFd, sockets[totalIfaceSock-1]) + 1;
+    maxfd = unixSockFd + 1;
 
-    while(1) {
-        tempFDSet = FDSet;
-        Select(maxfd, &tempFDSet, NULL, NULL, NULL); //TODO Read on unix domain socket
+    while (1) {
+        readFdSet = fdSet;
+        Select(maxfd, &readFdSet, NULL, NULL, NULL);
 
-        // Check which socket got a packet
-        for (index = 0; index<totalSockets; index++) {
-            if (FD_ISSET(sockets[index], &tempFDSet)) {
-                length = recvfrom(sockets[index], &etherFrame, sizeof(etherFrame), 0, NULL, NULL);
+        // Check if got a packet on an unix domain socket
+        if (FD_ISSET(unixSockFd, &readFdSet)) {
+            printf("Unix Socket Received\n");
+            Recvfrom(unixSockFd, &etherFrame, sizeof(etherFrame), 0, NULL, NULL);
+             
+        }
 
-                if(length < 0) {
+        // Check if got a packet on an iface socket
+        for (index = 0; index < totalIfaceSock; index++) {
+            if (FD_ISSET(sockets[index], &readFdSet)) {
+                length = Recvfrom(sockets[index], &etherFrame, sizeof(etherFrame), 0, NULL, NULL);
+
+                if (length < 0) {
                     printf("Error in receiving packet");
                 }
 
-                // Print out contents of received ethernet frame.
+                // Print out contents of received ethernet frame
                 printPacket(&etherFrame, length);
 
-                processFrame(&etherFrame, routes, sockets, index, totalSockets);
-            }// IF FD is set
-        } // For loop
-
-    } // while
-
+                // Process frame
+                processFrame(&etherFrame, routes, sockets, index, totalIfaceSock);
+            }
+        }
+    }
 }
-int createSockets(int *socketList, int *totalSockets, fd_set *FDSet) {
 
-    struct hwa_info	*hwa, *hwahead;
-
+int createIfaceSockets(int *ifaceSockList, int *totalIfaceSock, fd_set *fdSet) {
+    struct hwa_info *hwa, *hwahead;
     int startInterface = 2; //TODO All interfaces apart from lo and eth0
     int index = 0;
-    int i = 0;
-    int maxfd = 0;
     int totalInterfaces = 0;
-    int errnum = 0;
-
-    fd_set fixedFDSet;
     struct sockaddr_ll listenFilter;
-
 
     printf("\n");
 
     for (hwahead = hwa = Get_hw_addrs(); hwa != NULL; hwa = hwa->hwa_next, totalInterfaces++);
-    printf ("Interfaces: %d\n", totalInterfaces);
-    totalInterfaces = totalInterfaces - 2; // Discarding eth0 and lo
+    printf ("Total Number of Interfaces: %d\n", totalInterfaces);
 
-    *totalSockets = totalInterfaces; // setting variables from the main function
+    totalInterfaces = totalInterfaces - 2;  // Discarding eth0 and lo
+    *totalIfaceSock = totalInterfaces;      // setting variables from the main function
 
-    socketList = malloc(totalInterfaces * sizeof(int));
+    ifaceSockList = Malloc(totalInterfaces * sizeof(int));
 
-    FD_ZERO(&fixedFDSet);
-    FD_SET(0, &fixedFDSet);
-
-    memset(&listenFilter, 0, sizeof(listenFilter));
+    bzero(&listenFilter, sizeof(listenFilter));
     listenFilter.sll_protocol = PROTOCOL_NUMBER;
 
     for (hwahead = hwa = Get_hw_addrs(); hwa != NULL; hwa = hwa->hwa_next) {
@@ -255,37 +259,48 @@ int createSockets(int *socketList, int *totalSockets, fd_set *FDSet) {
 
         if (hwa->if_index > startInterface) {
             // if the interface number is greater than 2 then make sockets on each interfaces
-            if ((socketList[index] = socket(PF_PACKET, SOCK_RAW, htons(PROTOCOL_NUMBER))) < 0) {
-                printf("Error in creating PF_PACKET socket for interface: %d\n\n", index + 3);
-                exit (0);
+            if ((ifaceSockList[index] = socket(PF_PACKET, SOCK_RAW, htons(PROTOCOL_NUMBER))) < 0) {
+                err_quit("Error in creating PF_PACKET socket for interface: %d", index + 3);
             }
 
-            FD_SET(socketList[index], &fixedFDSet);
+            FD_SET(ifaceSockList[index], fdSet);
             listenFilter.sll_ifindex = hwa->if_index;
-            printf("Bind: %d\n\n", socketList[index]);
-            Bind(socketList[index], (struct sockaddr *) &listenFilter, sizeof(listenFilter)); //TODO Bind error
+            //TODO: Bind error
+            //Bind(ifaceSockList[index], (struct sockaddr *) &listenFilter, sizeof(listenFilter));
 
             index++;
         }
     }
 
-    //TODO Add unix domain socket
-    *FDSet = fixedFDSet;
     free_hwa_info(hwahead);
     return;
 }
 
 
-int main()
-{
-    int totalSockets;
-    fd_set FDSet;
-    int *socketList;
+int main() {
     routingTable routes[TOTAL_NODES + 1];
+    int *ifaceSockList;
+    int totalIfaceSock, unixSockFd;
+    fd_set fdSet;
 
-    createSockets(socketList, &totalSockets, &FDSet);
-    readSockets(socketList, totalSockets, FDSet, routes);
+    Signal(SIGINT, sig_int);
+    hostNode = getHostVmNodeNo();
+    FD_ZERO(&fdSet);
 
-    free(socketList);
+    // Create Unix domain socket
+    getFullPath(filePath, ODR_FILE, sizeof(filePath), FALSE);
+    unixSockFd = createAndBindUnixSocket(filePath);
+    FD_SET(unixSockFd, &fdSet);
 
+    // Create interface sockets
+    createIfaceSockets(ifaceSockList, &totalIfaceSock, &fdSet);
+
+    // Read incoming packets on all sockets
+    readAllSockets(unixSockFd, ifaceSockList, totalIfaceSock, fdSet, routes);
+
+    free(ifaceSockList);
+
+    unlink(filePath);
+    Close(unixSockFd);
 }
+

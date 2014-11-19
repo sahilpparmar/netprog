@@ -24,15 +24,18 @@
 #define CLI_FILE    "/tmp-client-XXXXXX"
 #define SER_PORT    13
 #define CLI_TIMEOUT 5
+#define TOTAL_VMS   10
 
 typedef enum {
     TRUE  = 1,
     FALSE = 0
 } bool;
 
-extern char canonicalIP[11][100];
 char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp);
+int getVmNodeByIP(char *ip);
+char* getIPByVmNode(char *ip, int node);
 int getHostVmNodeNo();
+int createAndBindUnixSocket(char *filePath);
 
 void msg_send(int sockfd, char *destIP, int destPort, char *msg, int forceRediscovery);
 int msg_recv(int sockfd, char *msg, char *srcIP, int *srcPort);
