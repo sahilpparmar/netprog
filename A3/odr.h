@@ -35,6 +35,13 @@ typedef struct {
 } ethernetFrame;
 
 typedef struct {
+    int ifaceNum;
+    int ifaceSocket;
+    uint8_t ifaceMAC[6];
+} ifaceInfo; 
+
+
+typedef struct {
     ethernetFrame frame;
     ethernetFrame *next;
 } waitingFrame;
