@@ -93,23 +93,23 @@ int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16
     uint16_t protocol = PROTOCOL_NUMBER;
 
     /*target address*/
-    struct sockaddr_ll socket_address;
+    struct sockaddr_ll socketAddress;
     EthernetFrame frame;
 
     /*RAW communication*/
-    socket_address.sll_family   = PF_PACKET;    
-    socket_address.sll_protocol = htons(PROTOCOL_NUMBER);  
+    socketAddress.sll_family   = PF_PACKET;    
+    socketAddress.sll_protocol = htons(PROTOCOL_NUMBER);  
 
     /*ARP hardware identifier is ethernet*/
-    socket_address.sll_hatype   = ARPHRD_ETHER;
+    socketAddress.sll_hatype   = ARPHRD_ETHER;
 
     /*target is another host*/
-    socket_address.sll_pkttype  = PACKET_OTHERHOST;
+    socketAddress.sll_pkttype  = PACKET_OTHERHOST;
 
     /*address length*/
-    socket_address.sll_halen    = ETH_ALEN;
+    socketAddress.sll_halen    = ETH_ALEN;
 
-    memcpy(&(socket_address.sll_addr), destMAC, sizeof(destMAC));
+    memcpy(&(socketAddress.sll_addr), destMAC, sizeof(destMAC));
 
     memcpy(&(frame.destMAC), destMAC, sizeof(destMAC));
 
@@ -117,10 +117,10 @@ int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16
     memcpy(&(frame.packet), packet, sizeof(ODRPacket));
 
     memcpy(&(frame.sourceMAC), srcMAC, sizeof(srcMAC));
-    socket_address.sll_ifindex  = outIfaceNum;
+    socketAddress.sll_ifindex  = outIfaceNum;
 
     retVal = sendto(socket, (void *) &frame, sizeof(EthernetFrame), 
-            0, (struct sockaddr *)&socket_address, sizeof(socket_address));
+            0, (struct sockaddr *)&socketAddress, sizeof(socketAddress));
     if (retVal == -1) {
         perror("Error in Sending packet");
     }
@@ -182,22 +182,22 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
     uint16_t protocol = PROTOCOL_NUMBER;
 
     /*target address*/
-    struct sockaddr_ll socket_address;
+    struct sockaddr_ll socketAddress;
     EthernetFrame frame;
 
     /*RAW communication*/
-    socket_address.sll_family   = PF_PACKET;    
-    socket_address.sll_protocol = htons(PROTOCOL_NUMBER);  
+    socketAddress.sll_family   = PF_PACKET;    
+    socketAddress.sll_protocol = htons(PROTOCOL_NUMBER);  
 
     /*ARP hardware identifier is ethernet*/
-    socket_address.sll_hatype   = ARPHRD_ETHER;
+    socketAddress.sll_hatype   = ARPHRD_ETHER;
 
     /*target is another host*/
-    socket_address.sll_pkttype  = PACKET_OTHERHOST;
+    socketAddress.sll_pkttype  = PACKET_OTHERHOST;
 
     /*address length*/
-    socket_address.sll_halen    = ETH_ALEN;
-    memcpy(&(socket_address.sll_addr),broadMAC, sizeof(broadMAC));
+    socketAddress.sll_halen    = ETH_ALEN;
+    memcpy(&(socketAddress.sll_addr),broadMAC, sizeof(broadMAC));
 
     memcpy(&(frame.destMAC), broadMAC, sizeof(broadMAC));
 
@@ -209,10 +209,10 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
         if (index != exceptInterface) {
 
             memcpy(&(frame.sourceMAC), (ifaceList[index]).ifaceMAC, sizeof(frame.sourceMAC));
-            socket_address.sll_ifindex  = ifaceList[index].ifaceNum;
+            socketAddress.sll_ifindex  = ifaceList[index].ifaceNum;
 
             retVal = sendto((ifaceList[index]).ifaceSocket, (void *) &frame, sizeof(EthernetFrame), 
-                    0, (struct sockaddr *)&socket_address, sizeof(socket_address));
+                    0, (struct sockaddr *)&socketAddress, sizeof(socketAddress));
             if (retVal == -1) {
                 perror("Error in Flooding packet");
             }
@@ -342,9 +342,21 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
     *ifaceSockList = Malloc(totalInterfaces * sizeof(IfaceInfo));
 
     bzero(&listenFilter, sizeof(listenFilter));
-    listenFilter.sll_protocol = PROTOCOL_NUMBER;
 
-    for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
+    /*RAW communication*/
+    listenFilter.sll_family   = PF_PACKET;    
+    listenFilter.sll_protocol = htons(PROTOCOL_NUMBER);  
+
+    /*ARP hardware identifier is ethernet*/
+    listenFilter.sll_hatype   = ARPHRD_ETHER;
+
+    /*target is another host*/
+    listenFilter.sll_pkttype  = PACKET_OTHERHOST;
+
+    /*address length*/
+    listenFilter.sll_halen    = ETH_ALEN;
+
+  for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
         printInterface(hwa);
 
         if ((strcmp(hwa->if_name, "lo") != 0) && (strcmp(hwa->if_name, "eth0") != 0)) {
@@ -357,7 +369,7 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
             FD_SET((*ifaceSockList)[index].ifaceSocket, fdSet);
             listenFilter.sll_ifindex = hwa->if_index;
             //TODO: Bind error
-            //Bind((*ifaceSockList)[index].ifaceSocket, (struct sockaddr *) &listenFilter, sizeof(listenFilter));
+            Bind((*ifaceSockList)[index].ifaceSocket, (struct sockaddr *) &listenFilter, sizeof(listenFilter));
             index++;
         }
     }
@@ -379,9 +391,9 @@ int main() {
     FD_ZERO(&fdSet);
 
     // Create Unix domain socket
-    getFullPath(filePath, ODR_FILE, sizeof(filePath), FALSE);
-    unixSockFd = createAndBindUnixSocket(filePath);
-    FD_SET(unixSockFd, &fdSet);
+//    getFullPath(filePath, ODR_FILE, sizeof(filePath), FALSE);
+//    unixSockFd = createAndBindUnixSocket(filePath);
+//    FD_SET(unixSockFd, &fdSet);
 
     // Create interface sockets
     totalIfaceSock = createIfaceSockets(&ifaceSockList, &fdSet);
