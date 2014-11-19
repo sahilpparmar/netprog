@@ -45,13 +45,13 @@ jmpToRetransmit:
 
         if (sigsetjmp(jmpToRetransmit, 1) != 0) {
             forceRediscovery = TRUE;
-            printf("Client at node vm%d: timeout on response from %s\n", hostNode, serverIP);
+            printf("Client at node vm%d: timeout on response from vm%d\n", hostNode, serverNode);
             goto jmpToRetransmit;
         }
 
         msg_recv(sockfd, buffer, serverIP, &serverPort);
         alarm(0);
-        printf("Client at node vm%d: recevied from %s => %s\n", hostNode, serverIP, buffer);
+        printf("Client at node vm%d: recevied from vm%d => %s\n", hostNode, serverNode, buffer);
     }
 
     err_msg("\nExiting! Thank you!\n");

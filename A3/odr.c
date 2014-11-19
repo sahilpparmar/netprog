@@ -2,9 +2,8 @@
 #include "common.h"
 #include "hw_addrs.h"
 #include "odr.h"
-#include "api.h"
 
-static char filePath[1024], hostNode, hostIP[100];
+char filePath[1024], hostNode, hostIP[100];
 
 static void sig_int(int signo) {
     unlink(filePath);
@@ -199,27 +198,6 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *if
 
 }
 
-int readUnixSocket(int sockfd, char *msg, char *srcIP, int *srcPort, char *destFile) {
-    struct sockaddr_un sockAddr;
-    ApiData apiData;
-    int len;
-
-    // Receive data from Client/Server
-    len = sizeof(sockAddr);
-    Recvfrom(sockfd, &apiData, sizeof(apiData), 0, (SA *) &sockAddr, &len);
-
-    memcpy(msg, apiData.data, strlen(apiData.data));
-    memcpy(srcIP, apiData.canonicalIP, strlen(apiData.canonicalIP));
-    *srcPort = apiData.port;
-    strcpy(destFile, sockAddr.sun_path);
-
-    return strlen(msg);
-}
-
-void processUnixPacket(int sockfd) {
-    //TODO
-}
-
 int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_set fdSet, RoutingTable* routes) {
     int maxfd, index;
     int length = 0; /*length of the received frame*/ 
@@ -227,7 +205,7 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
     fd_set readFdSet;
 
     maxfd = ifaceList[totalIfaceSock - 1].ifaceSocket + 1;
-    printf("\nReading all incoming packets =>\n\n");
+    printf("\nReading all incoming packets =>\n");
 
     while (1) {
         readFdSet = fdSet;
@@ -235,8 +213,6 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
 
         // Check if got a packet on an unix domain socket
         if (FD_ISSET(unixSockFd, &readFdSet)) {
-            printf("Packet from Unix Domain Socket Received\n");
-            Recvfrom(unixSockFd, &etherFrame, sizeof(etherFrame), 0, NULL, NULL);
             processUnixPacket(unixSockFd);
         } else {
 
@@ -300,12 +276,18 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
 int main() {
     RoutingTable routes[TOTAL_NODES + 1];
     IfaceInfo *ifaceSockList;
-    int totalIfaceSock, unixSockFd;
+    int totalIfaceSock, unixSockFd, filePortMapCnt;
     fd_set fdSet;
 
-    Signal(SIGINT, sig_int);
     hostNode = getHostVmNodeNo();
+    getIPByVmNode(hostIP, hostNode);
+    printf("ODR running on VM%d (%s)\n", hostNode, hostIP);
+
+    Signal(SIGINT, sig_int);
     FD_ZERO(&fdSet);
+    
+    // Initialize filePath to Port Number Map
+    initFilePortMap();
 
     // Create Unix domain socket
     getFullPath(filePath, ODR_FILE, sizeof(filePath), FALSE);
