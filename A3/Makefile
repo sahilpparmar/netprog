@@ -11,7 +11,7 @@ CFLAGS = ${FLAGS} -I${HOME}/lib
 
 all: odr server client
 
-odr: get_hw_addrs.o odr.o common.o
+odr: get_hw_addrs.o odr.o common.o api.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 odr.o: odr.c
 	${CC} ${CFLAGS} -c -o $@ $^
