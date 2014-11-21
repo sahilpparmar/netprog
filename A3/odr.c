@@ -348,8 +348,9 @@ int handleRREQ(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *iface
     int nwsrcNode;
     bool cond1, cond2;
 
+    packet = Malloc(sizeof(ODRPacket));
 
-    packet = &(etherFrame->packet);
+    memcpy(packet, &(etherFrame->packet), sizeof(ODRPacket));
 
     cond1 = createUpdateRouteEntry(etherFrame, inSockIndex, routes, ifaceList);
     if (CheckIfDestNode(packet) && !packet->Asent) {
