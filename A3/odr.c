@@ -325,6 +325,9 @@ bool CheckIfDestNode(packet) {
     return TRUE;
 }
 
+void changePacketType(ODRPacket *packet, packetType type) {
+    packet->type = type;
+}
 
 void incHopCount(ODRPacket *packet) {
     packet->hopCount = packet->hopCount + 1;
@@ -424,6 +427,43 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *if
 
 }
 
+int startCommunication(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifaceList, int totalSockets) {
+
+    uint8_t srcMAC[6], dstMAC[6];
+    int destIndex, outIfaceNum, outSocket;
+    ODRPacket *packet;
+
+
+    packet = Malloc(sizeof(ODRPacket));
+    memcpy(&packet, &(etherFrame->packet), sizeof(ODRPacket));
+    changePacketType(packet, DATA);
+
+    if(isRoutePresent(packet, routes)){
+        printf("Route is present\n");
+        destIndex = getVmNodeByIP(packet->destIP);
+        outIfaceNum = routes[destIndex].ifaceNum;
+        outSocket = ifaceList[outIfaceNum+2].ifaceSocket;
+
+        memcpy(dstMAC, routes[destIndex].nextHopMAC, sizeof(dstMAC));
+        memcpy(srcMAC, ifaceList[outIfaceNum + 2/*lo and eth0*/].ifaceMAC, sizeof(srcMAC));
+
+        sendonIFace(packet, srcMAC, dstMAC, outIfaceNum, outSocket);
+        return 0;
+    }
+    else{
+        // Create RREQ and Flood it out
+        printf("Route is not present, generating RREQ\n");
+        ODRPacket RREQPacket;
+        fillODRPacket(&RREQPacket, RREQ, packet->destIP, packet->sourceIP,
+                packet->destPort, packet->sourcePort, 0, 0, FALSE, 
+                packet->forceRedisc/*TODO Check */,NULL, 0);
+
+        floodPacket(&RREQPacket, ifaceList, -1 /* Flood on all interfaces */, totalSockets);
+        return 1;
+
+    }
+}
+
 int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_set fdSet, RoutingTable* routes) {
     int maxfd, index;
     int length = 0; /*length of the received frame*/ 
@@ -439,8 +479,8 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
 
         // Check if got a packet on an unix domain socket
         if (FD_ISSET(unixSockFd, &readFdSet)) {
-            int retVal =processUnixPacket(unixSockFd);
-            
+            if(processUnixPacket(unixSockFd)) 
+                startCommunication(&etherFrame, routes, ifaceList, totalIfaceSock);
         } else {
 
             // Check if got a packet on an iface socket

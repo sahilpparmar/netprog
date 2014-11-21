@@ -100,8 +100,8 @@ static int writeUnixSocket(int sockfd, char *srcIP, int srcPort, int destPort, c
     Sendto(sockfd, &apiData, sizeof(apiData), 0, (SA *) &destAddr, sizeof(destAddr));
 }
 
-/ 0- 
-void processUnixPacket(int sockfd) {
+// Return 1 if packet needs to be routed through ODR 
+int processUnixPacket(int sockfd) {
     char msg[100], destIP[100], srcFile[1024];
     int srcPort, destPort;
     bool forceRedis;
@@ -114,13 +114,10 @@ void processUnixPacket(int sockfd) {
         // Send directly to destPort on local process
         printf("Sending packet to %s:%d\n", hostIP, destPort);
         writeUnixSocket(sockfd, hostIP, srcPort, destPort, msg);
-
+        return 0;
     } else {
-        // Create a data packet and route the packet to destination
-        // If destination in route then send data gram --> createdatagram packet,
-        // else park data gram packet
-        //
         printf("ODR Routing Needed!\n");
+        return 1;
     }
 }
 

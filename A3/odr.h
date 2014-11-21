@@ -70,6 +70,6 @@ typedef struct {
 extern char filePath[1024], hostNode, hostIP[100];
 
 void initFilePortMap();
-void processUnixPacket(int sockfd);
+int processUnixPacket(int sockfd);
 
 #endif /* !_ODR_H */
