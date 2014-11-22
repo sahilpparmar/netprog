@@ -86,7 +86,7 @@ static int readUnixSocket(int sockfd, char *msg, char *destIP, int *destPort, bo
     return strlen(msg);
 }
 
-static int writeUnixSocket(int sockfd, char *srcIP, int srcPort, int destPort, char *msg) {
+int writeUnixSocket(int sockfd, char *srcIP, int srcPort, int destPort, char *msg) {
     ApiData apiData;
     struct sockaddr_un destAddr;
     char *destFile;

@@ -73,5 +73,6 @@ extern char filePath[1024], hostNode, hostIP[100];
 void initFilePortMap();
 int processUnixPacket(int sockfd, ODRPacket *packet);
 int getNextBroadCastID();
+int writeUnixSocket(int sockfd, char *srcIP, int srcPort, int destPort, char *msg);
 
 #endif /* !_ODR_H */
