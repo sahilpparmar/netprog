@@ -133,7 +133,6 @@ int processUnixPacket(int sockfd, ODRPacket *packet) {
         packet->forceRedisc = forceRedis;
         packet->data[0] = '\0';
 
-        printf("ODR Routing Needed!\n");
         return 1;
     }
 }
