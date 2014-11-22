@@ -5,6 +5,11 @@
 static FilePortMap filePortMap[100];
 static int filePortMapCnt;
 static int nextPortNo;
+static int nextBroadCastID = FIRST_BCAST_ID;
+
+int getNextBroadCastID() {
+    return nextBroadCastID++;
+}
 
 void initFilePortMap() {
     // Save server filePath <-> portNo map
@@ -29,6 +34,7 @@ static int getPortNoByFilePath(char *filePath) {
         if (filePortMap[i].isValid) {
             if ((time(NULL) - filePortMap[i].timestamp) < FP_MAP_STALE_VAL) {
                 if (strcmp(filePath, filePortMap[i].filePath) == 0) {
+                    filePortMap[i].timestamp = time(NULL);
                     return filePortMap[i].portNo;
                 }
             } else {
@@ -101,7 +107,7 @@ static int writeUnixSocket(int sockfd, char *srcIP, int srcPort, int destPort, c
 }
 
 // Return 1 if packet needs to be routed through ODR 
-int processUnixPacket(int sockfd) {
+int processUnixPacket(int sockfd, ODRPacket *packet) {
     char msg[100], destIP[100], srcFile[1024];
     int srcPort, destPort;
     bool forceRedis;
@@ -116,6 +122,17 @@ int processUnixPacket(int sockfd) {
         writeUnixSocket(sockfd, hostIP, srcPort, destPort, msg);
         return 0;
     } else {
+        packet->type = DATA;
+        strcpy(packet->sourceIP, hostIP);
+        strcpy(packet->destIP, destIP);
+        packet->sourcePort = srcPort;
+        packet->destPort = destPort;
+        packet->hopCount = 0;
+        packet->broadID = 0;
+        packet->Asent = FALSE;
+        packet->forceRedisc = forceRedis;
+        packet->data[0] = '\0';
+
         printf("ODR Routing Needed!\n");
         return 1;
     }

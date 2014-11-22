@@ -7,6 +7,7 @@
 #define MAX_PAYLOAD_LEN 100     // bytes
 #define FP_MAP_STALE_VAL 5      // sec
 #define FIRST_CLI_PORTNO 4000
+#define FIRST_BCAST_ID   8000
 
 // Packet Type
 typedef enum {
@@ -70,6 +71,7 @@ typedef struct {
 extern char filePath[1024], hostNode, hostIP[100];
 
 void initFilePortMap();
-int processUnixPacket(int sockfd);
+int processUnixPacket(int sockfd, ODRPacket *packet);
+int getNextBroadCastID();
 
 #endif /* !_ODR_H */
