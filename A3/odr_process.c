@@ -127,11 +127,11 @@ int processUnixPacket(int sockfd, ODRPacket *packet) {
         strcpy(packet->destIP, destIP);
         packet->sourcePort = srcPort;
         packet->destPort = destPort;
-        packet->hopCount = 0;
+        packet->hopCount = 1;
         packet->broadID = 0;
         packet->Asent = FALSE;
         packet->forceRedisc = forceRedis;
-        packet->data[0] = '\0';
+        strcpy(packet->data, msg);
 
         return 1;
     }

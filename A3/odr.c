@@ -5,7 +5,8 @@
 #include "hw_addrs.h"
 #include "odr.h"
 
-#define DEBUG 1 // 1 = TRUE
+#define DEBUG 0
+
 char filePath[1024], hostNode, hostIP[100];
 
 static void sig_int(int signo) {
@@ -17,7 +18,6 @@ void printInterface(struct hwa_info *hwa) {
     struct sockaddr	*sa;
     char   *ptr;
     int    i, prflag;
-
 
     if (DEBUG != TRUE) 
         return;
@@ -142,7 +142,7 @@ void receiveODRPacket(int sockfd, EthernetFrame *frame) {
 }
 
 int sendonIFace(ODRPacket *packet, uint8_t srcMAC[MACLEN], uint8_t destMAC[MACLEN],
-    uint16_t outIfaceNum, int sockfd)
+                uint16_t outIfaceNum, int sockfd)
 {
     int retVal;
 
@@ -201,14 +201,12 @@ int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList
     memcpy(srcMAC, ifaceList[outIfaceInd].ifaceMAC, MACLEN);
 
     while (waitingPackets != NULL) {
-
         sendonIFace(&(waitingPackets->packet), srcMAC, dstMAC, outIfaceNum, outSocket);
         waitingPackets = waitingPackets->next;
         packetSent++;
 
         free(freePacket);
         freePacket = waitingPackets;
-
     }
     routes[destIndex].waitListHead = NULL;
 
@@ -219,8 +217,6 @@ void printTable(RoutingTable *routes, int specific) {
     int i = 0;
     char MACTemp[10];
 
-    if (DEBUG != TRUE) 
-        return;
     printf("===================================================================================================================================\n");
     printf("Destination Node |   isValid  |     broadID     |   ifaceInd |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
     printf("===================================================================================================================================\n");
@@ -231,10 +227,12 @@ void printTable(RoutingTable *routes, int specific) {
                 ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, routes[specific].timeStamp, routes[specific].waitListHead);
     }
     else {
-        for(i=1; i< (TOTAL_VMS + 1); i++) {
-            printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
-                    i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
-                    ethAddrNtoP(routes[i].nextHopMAC, MACTemp), routes[i].hopCount, routes[i].timeStamp, routes[i].waitListHead);
+        for(i = 1; i <= TOTAL_VMS; i++) {
+            if (routes[i].isValid)
+                printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
+                        i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
+                        ethAddrNtoP(routes[i].nextHopMAC, MACTemp), routes[i].hopCount,
+                        routes[i].timeStamp, routes[i].waitListHead);
         }
     }
     printf("===================================================================================================================================\n");
@@ -242,7 +240,7 @@ void printTable(RoutingTable *routes, int specific) {
 }
 
 bool isRouteStale(RoutingTable *routeEntry) {
-    return (time(NULL) - routeEntry->timeStamp) < STALENESS;
+    return (((uint32_t)time(NULL) - routeEntry->timeStamp) > STALENESS) ? TRUE : FALSE;
 }
 
 bool checkIfSrcNode(ODRPacket *packet) {
@@ -271,6 +269,32 @@ void setAsentFlag(ODRPacket *packet) {
     return;
 }
 
+bool isBetterOrNewerRoute(RoutingTable *routeEntry, uint32_t newBroadID, uint32_t newHopCount) {
+    // No Route present
+    if (routeEntry->isValid == FALSE)
+        return TRUE;
+
+    // Route is stale
+    if (isRouteStale(routeEntry))
+        return TRUE;
+
+    if (routeEntry->broadID != 0 && newBroadID != 0) {
+        // Newer RREQ packet
+        if (routeEntry->broadID < newBroadID)
+            return TRUE;
+        // Older RREQ packet
+        if (routeEntry->broadID > newBroadID)
+            return FALSE;
+    }
+
+    // New path with better hop count
+    if (routeEntry->hopCount >= newHopCount)
+        return TRUE;
+
+    // Existing Route is better
+    return FALSE;
+}
+
 bool createUpdateRouteEntry(EthernetFrame *frame, int ifaceInd, RoutingTable *routes, IfaceInfo *ifaceList) {
     int srcNode;
 
@@ -278,12 +302,9 @@ bool createUpdateRouteEntry(EthernetFrame *frame, int ifaceInd, RoutingTable *ro
     srcNode = getVmNodeByIP(packet->sourceIP);
 
     RoutingTable *routeEntry = &routes[srcNode];
-    if ((routeEntry->isValid == FALSE) ||
-        ((routeEntry->broadID == packet->broadID) && (routeEntry->hopCount > packet->hopCount)) ||
-        (routeEntry->broadID < packet->broadID) ||
-        (packet->broadID == 0) ||
-        (isRouteStale(routeEntry)))
-    {
+
+    if (isBetterOrNewerRoute(routeEntry, packet->broadID, packet->hopCount)) {
+
         routeEntry->isValid = TRUE;
         routeEntry->broadID = packet->broadID;
         routeEntry->ifaceInd = ifaceInd;
@@ -291,8 +312,7 @@ bool createUpdateRouteEntry(EthernetFrame *frame, int ifaceInd, RoutingTable *ro
         routeEntry->hopCount = packet->hopCount;
         routeEntry->timeStamp = (uint32_t) time(NULL);
 
-        printf("===================Updated Entry====================\n");
-        printTable(routes, srcNode);
+        printTable(routes, 0);
         printf("Cleared Waiting Queue for src Node: VM%d, Packets Sent: %d\n",
                 srcNode, sendWaitingPackets(srcNode, routes, ifaceList));
 
@@ -337,9 +357,10 @@ bool isRoutePresent(ODRPacket *packet, RoutingTable *routes) {
     destNode = getVmNodeByIP(packet->destIP);  
 
     RoutingTable *routeEntry = &(routes[destNode]);
-    if ((routeEntry->isValid == FALSE) ||   // InValid Route Entry
+    if ((routeEntry->isValid == FALSE) ||   // Invalid Route Entry
         isRouteStale(routeEntry))           // Route expired
     {
+        printf("Route Not present(%d) or Stale(%d)\n", routeEntry->isValid, isRouteStale(routeEntry));
         routeEntry->isValid = FALSE;
         if (packet->type != RREQ) {
             addToWaitList(packet, routes, destNode);
@@ -425,7 +446,7 @@ void handleRREQ(EthernetFrame *frame, RoutingTable *routes, IfaceInfo *ifaceList
             nwdestNode = getVmNodeByIP(packet->sourceIP);
 
             fillODRPacket(&RREPPacket, RREP, packet->destIP, packet->sourceIP,
-                    packet->destPort, packet->sourcePort, 0, 0, FALSE,
+                    packet->destPort, packet->sourcePort, 1, 0, FALSE,
                     packet->forceRedisc/*TODO Check */, NULL, 0);
 
             sendonIFace(&RREPPacket, ifaceList[inSockIndex].ifaceMAC, routes[nwdestNode].nextHopMAC,
@@ -488,7 +509,7 @@ void handleRREP(EthernetFrame *frame, RoutingTable *routes, IfaceInfo *ifaceList
         printf("Route is not present, generating RREQ\n");
         ODRPacket RREQPacket;
         fillODRPacket(&RREQPacket, RREQ, hostIP, packet->destIP,
-                0, packet->destPort, 0, getNextBroadCastID(), FALSE,
+                0, packet->destPort, 1, getNextBroadCastID(), FALSE,
                 packet->forceRedisc, NULL, 0);
 
         floodPacket(&RREQPacket, ifaceList, inSockIndex, totalSockets);
@@ -511,7 +532,7 @@ void handleDATA(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
     if (checkIfDestNode(packet)) {
         // Send directly to destPort on local process
         printf("Sending packet to %s:%d\n", packet->destIP, packet->destPort);
-        writeUnixSocket(unixSockFd, packet->destIP, packet->sourcePort,
+        writeUnixSocket(unixSockFd, packet->sourceIP, packet->sourcePort,
                         packet->destPort, packet->data);
         return;
     }
@@ -528,7 +549,7 @@ void handleDATA(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
         printf("Route is not present, generating RREQ\n");
         ODRPacket RREQPacket;
         fillODRPacket(&RREQPacket, RREQ, hostIP, packet->destIP,
-                0, packet->destPort, 0, getNextBroadCastID(), FALSE,
+                0, packet->destPort, 1, getNextBroadCastID(), FALSE,
                 packet->forceRedisc, NULL, 0);
 
         floodPacket(&RREQPacket, ifaceList, inSockIndex, totalSockets);
@@ -542,49 +563,28 @@ void processFrame(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
 {
     ODRPacket *packet;
     packet = &(frame->packet);
-    printf("======= New Packet Received ======\n");
     printPacket(frame); 
 
     switch (packet->type) {
 
         case RREQ: // RREQ packet
-            printf("===================Previous Entry====================\n");
-            printTable(routes, 0);
             printf("RREQ packet received!\n");
-           
             handleRREQ(frame, routes, ifaceList, inSockIndex, totalSockets);
-           
-            printf("===================Updated Entry====================\n");
-            printTable(routes, 0);
             break;
 
         case RREP: // RREP packet
-            printf("===================Previous Entry====================\n");
-            printTable(routes, 0);
             printf("RREP packet received!\n");
-           
             handleRREP(frame, routes, ifaceList, inSockIndex, totalSockets);
-           
-            printf("===================Updated Entry====================\n");
-            printTable(routes, 0);
             break;
 
         case DATA: // Data packet
-            
-            printf("===================Previous Entry====================\n");
-            printTable(routes, 0);
             printf("Data packet received!\n");
-            
             handleDATA(frame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
-            
-            printf("===================Updated Entry====================\n");
-            printTable(routes, 0);
             break;
 
         default: // Error
             err_msg("Malformed packet received!");
-    } // Switch
-
+    }
 }
 
 int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *ifaceList, int totalSockets) {
@@ -596,10 +596,10 @@ int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *iface
         destIndex = getVmNodeByIP(packet->destIP);
         outIfaceInd = routes[destIndex].ifaceInd;
         outIfaceNum = ifaceList[outIfaceInd].ifaceNum;
-        outSocket = ifaceList[outIfaceNum].ifaceSocket;
+        outSocket = ifaceList[outIfaceInd].ifaceSocket;
 
         memcpy(dstMAC, routes[destIndex].nextHopMAC, MACLEN);
-        memcpy(srcMAC, ifaceList[outIfaceNum].ifaceMAC, MACLEN);
+        memcpy(srcMAC, ifaceList[outIfaceInd].ifaceMAC, MACLEN);
 
         sendonIFace(packet, srcMAC, dstMAC, outIfaceNum, outSocket);
         return 0;
@@ -609,7 +609,7 @@ int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *iface
         printf("Route is not present, generating RREQ\n");
         ODRPacket RREQPacket;
         fillODRPacket(&RREQPacket, RREQ, packet->sourceIP, packet->destIP,
-                packet->sourcePort, packet->destPort, 0, getNextBroadCastID(), FALSE, 
+                packet->sourcePort, packet->destPort, 1, getNextBroadCastID(), FALSE, 
                 packet->forceRedisc, NULL, 0);
 
         floodPacket(&RREQPacket, ifaceList, -1 /* Flood on all interfaces */, totalSockets);
