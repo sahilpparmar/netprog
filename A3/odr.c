@@ -5,6 +5,7 @@
 #include "hw_addrs.h"
 #include "odr.h"
 
+#define DEBUG 1 // 1 = TRUE
 char filePath[1024], hostNode, hostIP[100];
 
 static void sig_int(int signo) {
@@ -16,6 +17,10 @@ void printInterface(struct hwa_info *hwa) {
     struct sockaddr	*sa;
     char   *ptr;
     int    i, prflag;
+
+
+    if (DEBUG != TRUE) 
+        return;
 
     printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
 
@@ -56,16 +61,19 @@ char* ethAddrNtoP(char *MAC, char *tempMAC) {
     return tempMAC;
 }
 
-void printPacket(EthernetFrame *etherFrame,uint32_t length) {
+void printPacket(EthernetFrame *etherFrame) {
 
     char buffer[20];
     int i;
     ODRPacket *packet = &(etherFrame->packet);
 
+    if (DEBUG != TRUE) 
+        return;
+
     printf ("\nEthernet frame header:\n");
 
-    printf ("Destination MAC (this node): %s\n", ethAddrNtoP(etherFrame->destMAC), buffer);
-    printf ("Source MAC (this node): %s\n", ethAddrNtoP(etherFrame->sourceMAC), buffer);
+    printf ("Destination MAC (this node): %s\n", ethAddrNtoP(etherFrame->destMAC, buffer));
+    printf ("Source MAC (this node): %s\n", ethAddrNtoP(etherFrame->sourceMAC, buffer));
 
     printf("Ethernet Type Code: %x \n", etherFrame->protocol[0] << 8 + etherFrame->protocol[1]);
 
@@ -124,7 +132,7 @@ void receiveODRPacket(int sockfd, EthernetFrame *frame) {
     packet->broadID    = ntohl(packet->broadID);
 
     // Print out contents of received ethernet frame
-    printPacket(frame, len);
+    printPacket(frame);
 }
 
 int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16_t outIfaceNum, int sockfd) {
@@ -204,6 +212,9 @@ int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList
 void printTable(RoutingTable *routes, int specific) {
     int i = 0;
     char MACTemp[10];
+
+    if (DEBUG != TRUE) 
+        return;
     printf("===================================================================================================================================\n");
     printf("Destination Node |   isValid  |     broadID     |   ifaceNum |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
     printf("===================================================================================================================================\n");
@@ -272,6 +283,10 @@ bool createUpdateRouteEntry(EthernetFrame *frame, int inIface, RoutingTable *rou
                 srcNode, sendWaitingPackets(srcNode, routes, ifaceList));
 
         routeEntry->timeStamp = (uint32_t) time (NULL); 
+        printf("===================Previous Entry====================\n");
+        printTable(routes, srcNode);
+        printf("===================Updated Entry====================\n");
+        printTable(routes, srcNode);
         return TRUE;
     }
     return FALSE;
@@ -503,22 +518,43 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
 {
     ODRPacket *packet;
     packet = &(etherFrame->packet);
+    printf("======= New Packet Received ======\n");
+    printPacket(etherFrame); 
 
     switch (packet->type) {
 
         case RREQ: // RREQ packet
+            printf("===================Previous Entry====================\n");
+            printTable(routes, -1);
             printf("RREQ packet received!\n");
+           
             handleRREQ(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
+           
+            printf("===================Updated Entry====================\n");
+            printTable(routes, -1);
             break;
 
         case RREP: // RREP packet
+            printf("===================Previous Entry====================\n");
+            printTable(routes, -1);
             printf("RREP packet received!\n");
+           
             handleRREP(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
+           
+            printf("===================Updated Entry====================\n");
+            printTable(routes, -1);
             break;
 
         case DATA: // Data packet
+            
+            printf("===================Previous Entry====================\n");
+            printTable(routes, -1);
             printf("Data packet received!\n");
+            
             handleDATA(etherFrame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
+            
+            printf("===================Updated Entry====================\n");
+            printTable(routes, -1);
             break;
 
         default: // Error
@@ -648,7 +684,6 @@ int main() {
     int totalIfaceSock, unixSockFd, filePortMapCnt;
     fd_set fdSet;
 
-    printTable(routes, 0);
     hostNode = getHostVmNodeNo();
     getIPByVmNode(hostIP, hostNode);
     printf("ODR running on VM%d (%s)\n", hostNode, hostIP);
