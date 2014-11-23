@@ -236,8 +236,8 @@ void printTable(RoutingTable *routes, int specific) {
 	    for(i=1; i< (TOTAL_VMS + 1); i++) {
 		    if(routes[i].isValid)
 			    printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %15s  | %12p |\n",
-					    specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
-					    ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, asctime( localtime((const time_t *)&routes[specific].timeStamp)), routes[specific].waitListHead);
+					    i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
+					    ethAddrNtoP(routes[i].nextHopMAC, MACTemp), routes[i].hopCount, asctime( localtime((const time_t *)&routes[i].timeStamp)), routes[i].waitListHead);
 	    }
     }
     printf("===================================================================================================================================\n");
