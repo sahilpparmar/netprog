@@ -5,6 +5,7 @@
 #include "hw_addrs.h"
 #include "odr.h"
 
+#define DEBUG 1 // 1 = TRUE
 char filePath[1024], hostNode, hostIP[100];
 
 static void sig_int(int signo) {
@@ -16,6 +17,10 @@ void printInterface(struct hwa_info *hwa) {
     struct sockaddr	*sa;
     char   *ptr;
     int    i, prflag;
+
+
+    if (DEBUG != TRUE) 
+        return;
 
     printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
 
@@ -44,10 +49,13 @@ void printInterface(struct hwa_info *hwa) {
 
 }
 
-void printPacket(EthernetFrame *etherFrame,uint32_t length) {
+void printPacket(EthernetFrame *etherFrame) {
 
     int i;
     ODRPacket *packet = &(etherFrame->packet);
+
+    if (DEBUG != TRUE) 
+        return;
 
     printf ("\nEthernet frame header:\n");
 
@@ -182,6 +190,9 @@ char* ethAddrNtoP(char *MAC, char *tempMAC) {
 void printTable(RoutingTable *routes, int specific) {
     int i = 0;
     char MACTemp[10];
+
+    if (DEBUG != TRUE) 
+        return;
     printf("===================================================================================================================================\n");
     printf("Destination Node |   isValid  |     broadID     |   ifaceNum |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
     printf("===================================================================================================================================\n");
@@ -250,6 +261,10 @@ bool createUpdateRouteEntry(EthernetFrame *frame, int inIface, RoutingTable *rou
                 srcNode, sendWaitingPackets(srcNode, routes, ifaceList));
 
         routeEntry->timeStamp = (uint32_t) time (NULL); 
+        printf("===================Previous Entry====================\n");
+        printTable(routes, srcNode);
+        printf("===================Updated Entry====================\n");
+        printTable(routes, srcNode);
         return TRUE;
     }
     return FALSE;
@@ -485,22 +500,43 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
 {
     ODRPacket *packet;
     packet = &(etherFrame->packet);
+    printf("======= New Packet Received ======\n");
+    printPacket(etherFrame); 
 
     switch (packet->type) {
 
         case RREQ: // RREQ packet
+            printf("===================Previous Entry====================\n");
+            printTable(routes, -1);
             printf("RREQ packet received!\n");
+           
             handleRREQ(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
+           
+            printf("===================Updated Entry====================\n");
+            printTable(routes, -1);
             break;
 
         case RREP: // RREP packet
+            printf("===================Previous Entry====================\n");
+            printTable(routes, -1);
             printf("RREP packet received!\n");
+           
             handleRREP(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
+           
+            printf("===================Updated Entry====================\n");
+            printTable(routes, -1);
             break;
 
         case DATA: // Data packet
+            
+            printf("===================Previous Entry====================\n");
+            printTable(routes, -1);
             printf("Data packet received!\n");
+            
             handleDATA(etherFrame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
+            
+            printf("===================Updated Entry====================\n");
+            printTable(routes, -1);
             break;
 
         default: // Error
@@ -574,7 +610,7 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
                 }
 
                 // Print out contents of received ethernet frame
-                printPacket(&etherFrame, length);
+                printPacket(&etherFrame);
 
                 // Process frame
                 processFrame(&etherFrame, routes, unixSockFd, ifaceList, index, totalIfaceSock);
@@ -639,7 +675,6 @@ int main() {
     int totalIfaceSock, unixSockFd, filePortMapCnt;
     fd_set fdSet;
 
-    printTable(routes, 0);
     hostNode = getHostVmNodeNo();
     getIPByVmNode(hostIP, hostNode);
     printf("ODR running on VM%d (%s)\n", hostNode, hostIP);
