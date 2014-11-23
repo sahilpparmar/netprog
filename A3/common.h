@@ -23,7 +23,7 @@
 #define SER_FILE    "/tmp-server"
 #define CLI_FILE    "/tmp-client-XXXXXX"
 #define SER_PORT    13
-#define CLI_TIMEOUT 5
+#define CLI_TIMEOUT 100
 #define TOTAL_VMS   10
 
 typedef enum {

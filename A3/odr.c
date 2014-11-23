@@ -1,11 +1,13 @@
 #include <sys/socket.h>
+#include <unistd.h>
 #include <linux/if_packet.h>
 #include <linux/if_arp.h>
 #include "common.h"
 #include "hw_addrs.h"
 #include "odr.h"
 
-#define DEBUG 1 // 1 = TRUE
+#define DEBUG 0 // 1 = TRUE
+#define SLEEP_SEC 6 // Sleep parameter
 char filePath[1024], hostNode, hostIP[100];
 
 static void sig_int(int signo) {
@@ -17,7 +19,6 @@ void printInterface(struct hwa_info *hwa) {
     struct sockaddr	*sa;
     char   *ptr;
     int    i, prflag;
-
 
     if (DEBUG != TRUE) 
         return;
@@ -116,6 +117,7 @@ void sendEthernetPacket(int sockfd, EthernetFrame *frame, SA *sockAddr, int saLe
     packet->destPort   = htonl(packet->destPort);
     packet->hopCount   = htonl(packet->hopCount);
     packet->broadID    = htonl(packet->broadID);
+    sleep(SLEEP_SEC);
 
     retVal = sendto(sockfd, (void *)frame, sizeof(EthernetFrame), 0, sockAddr, saLen);
     if (retVal == -1) {
@@ -201,6 +203,9 @@ int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList
     memcpy(srcMAC, ifaceList[outIfaceInd].ifaceMAC, MACLEN);
 
     while (waitingPackets != NULL) {
+        #ifdef DEBUG
+        printf("Sent a waiting Packet of Type: %d", waitingPackets->packet.type);
+        #endif /* MACRO */
 
         sendonIFace(&(waitingPackets->packet), srcMAC, dstMAC, outIfaceNum, outSocket);
         waitingPackets = waitingPackets->next;
@@ -219,30 +224,30 @@ void printTable(RoutingTable *routes, int specific) {
     int i = 0;
     char MACTemp[10];
 
-    if (DEBUG != TRUE) 
-        return;
     printf("===================================================================================================================================\n");
     printf("Destination Node |   isValid  |     broadID     |   ifaceInd |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
     printf("===================================================================================================================================\n");
 
     if (specific != 0) {
-        printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
-                specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
-                ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, routes[specific].timeStamp, routes[specific].waitListHead);
+	    printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %15s  | %12p |\n",
+			    specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
+			    ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, asctime( localtime((const time_t *)&routes[specific].timeStamp)), routes[specific].waitListHead);
     }
     else {
-        for(i=1; i< (TOTAL_VMS + 1); i++) {
-            printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
-                    i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
-                    ethAddrNtoP(routes[i].nextHopMAC, MACTemp), routes[i].hopCount, routes[i].timeStamp, routes[i].waitListHead);
-        }
+
+	    for(i=1; i< (TOTAL_VMS + 1); i++) {
+		    if(routes[i].isValid)
+			    printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %15s  | %12p |\n",
+					    specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
+					    ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, asctime( localtime((const time_t *)&routes[specific].timeStamp)), routes[specific].waitListHead);
+	    }
     }
     printf("===================================================================================================================================\n");
 
 }
 
 bool isRouteStale(RoutingTable *routeEntry) {
-    return (time(NULL) - routeEntry->timeStamp) < STALENESS;
+    return (((uint32_t)time(NULL) - routeEntry->timeStamp) > STALENESS) ? TRUE : FALSE;
 }
 
 bool checkIfSrcNode(ODRPacket *packet) {
@@ -291,7 +296,6 @@ bool createUpdateRouteEntry(EthernetFrame *frame, int ifaceInd, RoutingTable *ro
         routeEntry->hopCount = packet->hopCount;
         routeEntry->timeStamp = (uint32_t) time(NULL);
 
-        printf("===================Updated Entry====================\n");
         printTable(routes, srcNode);
         printf("Cleared Waiting Queue for src Node: VM%d, Packets Sent: %d\n",
                 srcNode, sendWaitingPackets(srcNode, routes, ifaceList));
@@ -337,9 +341,10 @@ bool isRoutePresent(ODRPacket *packet, RoutingTable *routes) {
     destNode = getVmNodeByIP(packet->destIP);  
 
     RoutingTable *routeEntry = &(routes[destNode]);
-    if ((routeEntry->isValid == FALSE) ||   // InValid Route Entry
+    if ((routeEntry->isValid == FALSE) ||   // Invalid Route Entry
         isRouteStale(routeEntry))           // Route expired
     {
+        printf("Route Not present(%d) or Stale(%d)\n", routeEntry->isValid, isRouteStale(routeEntry));
         routeEntry->isValid = FALSE;
         if (packet->type != RREQ) {
             addToWaitList(packet, routes, destNode);
@@ -390,6 +395,7 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
 
             memcpy(frame.sourceMAC, ifaceList[index].ifaceMAC, MACLEN);
             sockAddr.sll_ifindex  = ifaceList[index].ifaceNum;
+            printf("Flooding Packet on interface number: %d\n", ifaceList[index].ifaceNum);
 
             sendEthernetPacket(ifaceList[index].ifaceSocket, &frame, (SA*) &sockAddr,
                                 sizeof(sockAddr));
@@ -407,10 +413,13 @@ void handleRREQ(EthernetFrame *frame, RoutingTable *routes, IfaceInfo *ifaceList
     int nwdestNode;
     int nwsrcNode;
     bool isSrcRouteUpdated;
+    char buffer[20];
 
     packet = Malloc(sizeof(ODRPacket));
     memcpy(packet, &(frame->packet), sizeof(ODRPacket));
-
+    
+    printf("RREQ Packet received with destMAC: %s\n", ethAddrNtoP(frame->destMAC, buffer));
+    
     if (checkIfSrcNode(packet)) {
         // Do nothing, RREQ received from original source, stop flooding.
         return;
@@ -511,7 +520,7 @@ void handleDATA(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
     if (checkIfDestNode(packet)) {
         // Send directly to destPort on local process
         printf("Sending packet to %s:%d\n", packet->destIP, packet->destPort);
-        writeUnixSocket(unixSockFd, packet->destIP, packet->sourcePort,
+        writeUnixSocket(unixSockFd, packet->sourceIP, packet->sourcePort,
                         packet->destPort, packet->data);
         return;
     }
@@ -542,43 +551,26 @@ void processFrame(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
 {
     ODRPacket *packet;
     packet = &(frame->packet);
-    printf("======= New Packet Received ======\n");
     printPacket(frame); 
 
     switch (packet->type) {
 
         case RREQ: // RREQ packet
-            printf("===================Previous Entry====================\n");
-            printTable(routes, 0);
             printf("RREQ packet received!\n");
-           
+	    sleep(SLEEP_SEC);
             handleRREQ(frame, routes, ifaceList, inSockIndex, totalSockets);
-           
-            printf("===================Updated Entry====================\n");
-            printTable(routes, 0);
             break;
 
         case RREP: // RREP packet
-            printf("===================Previous Entry====================\n");
-            printTable(routes, 0);
             printf("RREP packet received!\n");
-           
+	    sleep(SLEEP_SEC);
             handleRREP(frame, routes, ifaceList, inSockIndex, totalSockets);
-           
-            printf("===================Updated Entry====================\n");
-            printTable(routes, 0);
             break;
 
         case DATA: // Data packet
-            
-            printf("===================Previous Entry====================\n");
-            printTable(routes, 0);
             printf("Data packet received!\n");
-            
+	    sleep(SLEEP_SEC);
             handleDATA(frame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
-            
-            printf("===================Updated Entry====================\n");
-            printTable(routes, 0);
             break;
 
         default: // Error
@@ -596,10 +588,10 @@ int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *iface
         destIndex = getVmNodeByIP(packet->destIP);
         outIfaceInd = routes[destIndex].ifaceInd;
         outIfaceNum = ifaceList[outIfaceInd].ifaceNum;
-        outSocket = ifaceList[outIfaceNum].ifaceSocket;
+        outSocket = ifaceList[outIfaceInd].ifaceSocket;
 
         memcpy(dstMAC, routes[destIndex].nextHopMAC, MACLEN);
-        memcpy(srcMAC, ifaceList[outIfaceNum].ifaceMAC, MACLEN);
+        memcpy(srcMAC, ifaceList[outIfaceInd].ifaceMAC, MACLEN);
 
         sendonIFace(packet, srcMAC, dstMAC, outIfaceNum, outSocket);
         return 0;

@@ -131,7 +131,7 @@ int processUnixPacket(int sockfd, ODRPacket *packet) {
         packet->broadID = 0;
         packet->Asent = FALSE;
         packet->forceRedisc = forceRedis;
-        packet->data[0] = '\0';
+        strcpy(packet->data, msg);
 
         return 1;
     }
