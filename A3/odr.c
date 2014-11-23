@@ -1,4 +1,5 @@
 #include <sys/socket.h>
+#include <unistd.h>
 #include <linux/if_packet.h>
 #include <linux/if_arp.h>
 #include "common.h"
@@ -15,12 +16,11 @@ static void sig_int(int signo) {
 }
 
 void printInterface(struct hwa_info *hwa) {
+#if DEBUG
+
     struct sockaddr	*sa;
     char   *ptr;
     int    i, prflag;
-
-    if (DEBUG != TRUE) 
-        return;
 
     printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
 
@@ -47,6 +47,7 @@ void printInterface(struct hwa_info *hwa) {
 
     printf("\n         interface index = %d\n\n", hwa->if_index);
 
+#endif
 }
 
 char* ethAddrNtoP(char *MAC, char *tempMAC) {
@@ -61,20 +62,12 @@ char* ethAddrNtoP(char *MAC, char *tempMAC) {
     return tempMAC;
 }
 
-void printMACAddrs(uint8_t srcMAC[MACLEN], uint8_t destMAC[MACLEN]) {
-    char buffer[20];
-    printf ("**Destination MAC: %s\n", ethAddrNtoP(destMAC, buffer));
-    printf ("**Source MAC: %s\n", ethAddrNtoP(srcMAC, buffer));
-}
-
 void printPacket(EthernetFrame *frame) {
+#if DEBUG
 
+    ODRPacket *packet = &(frame->packet);
     char buffer[20];
     int i;
-    ODRPacket *packet = &(frame->packet);
-
-    if (DEBUG != TRUE) 
-        return;
 
     printf ("\nEthernet frame header:\n");
 
@@ -101,6 +94,8 @@ void printPacket(EthernetFrame *frame) {
         printf("forceRedisc: False\n");
 
     printf("Data: %s \n", packet->data);
+
+#endif
 
     return;
 }
@@ -201,6 +196,9 @@ int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList
     memcpy(srcMAC, ifaceList[outIfaceInd].ifaceMAC, MACLEN);
 
     while (waitingPackets != NULL) {
+#if DEBUG
+        printf("Sent a waiting Packet of Type: %d", waitingPackets->packet.type);
+#endif
         sendonIFace(&(waitingPackets->packet), srcMAC, dstMAC, outIfaceNum, outSocket);
         waitingPackets = waitingPackets->next;
         packetSent++;
@@ -214,25 +212,26 @@ int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList
 }
 
 void printTable(RoutingTable *routes, int specific) {
-    int i = 0;
-    char MACTemp[10];
+    char MACTemp[25];
+    int i;
 
     printf("===================================================================================================================================\n");
-    printf("Destination Node |   isValid  |     broadID     |   ifaceInd |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
+    printf("Destination Node | isValid |   broadID   | ifaceInd |    nextHopMAC     | hopCount | waitListHead |        timestamp\n");
     printf("===================================================================================================================================\n");
 
     if (specific != 0) {
-        printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
-                specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
-                ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, routes[specific].timeStamp, routes[specific].waitListHead);
-    }
-    else {
-        for(i = 1; i <= TOTAL_VMS; i++) {
+        printf("\tVM%-5d  | %8d | %10d | %8d | %17s | %8d | %8p | %24s",
+                specific, routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
+                ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount,
+                routes[specific].waitListHead, asctime(localtime((const time_t *)&routes[specific].timeStamp)));
+    } else {
+
+        for (i = 1; i <= TOTAL_VMS; i++) {
             if (routes[i].isValid)
-                printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
-                        i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
+                printf("\tVM%-5d  | %8d | %10d | %8d | %17s | %8d | %8p | %24s",
+                        i, routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
                         ethAddrNtoP(routes[i].nextHopMAC, MACTemp), routes[i].hopCount,
-                        routes[i].timeStamp, routes[i].waitListHead);
+                        routes[i].waitListHead, asctime(localtime((const time_t *)&routes[i].timeStamp)));
         }
     }
     printf("===================================================================================================================================\n");
@@ -411,6 +410,7 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
 
             memcpy(frame.sourceMAC, ifaceList[index].ifaceMAC, MACLEN);
             sockAddr.sll_ifindex  = ifaceList[index].ifaceNum;
+            printf("Flooding Packet on interface number: %d\n", ifaceList[index].ifaceNum);
 
             sendEthernetPacket(ifaceList[index].ifaceSocket, &frame, (SA*) &sockAddr,
                                 sizeof(sockAddr));
