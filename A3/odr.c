@@ -55,7 +55,7 @@ char* ethAddrNtoP(char *MAC, char *tempMAC) {
 
     tempMAC[0] = '\0';
     for (i = 0; i < 6; i++) {
-        sprintf(buf, "%.2x%s", MAC[i], i == 5 ? "" : ":");
+        sprintf(buf, "%.2x%s", MAC[i] & 0xff , i == 5 ? "" : ":");
         strcat(tempMAC, buf);
     }
     return tempMAC;
@@ -525,36 +525,36 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
 
         case RREQ: // RREQ packet
             printf("===================Previous Entry====================\n");
-            printTable(routes, -1);
+            printTable(routes, 0);
             printf("RREQ packet received!\n");
            
             handleRREQ(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
            
             printf("===================Updated Entry====================\n");
-            printTable(routes, -1);
+            printTable(routes, 0);
             break;
 
         case RREP: // RREP packet
             printf("===================Previous Entry====================\n");
-            printTable(routes, -1);
+            printTable(routes, 0);
             printf("RREP packet received!\n");
            
             handleRREP(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
            
             printf("===================Updated Entry====================\n");
-            printTable(routes, -1);
+            printTable(routes, 0);
             break;
 
         case DATA: // Data packet
             
             printf("===================Previous Entry====================\n");
-            printTable(routes, -1);
+            printTable(routes, 0);
             printf("Data packet received!\n");
             
             handleDATA(etherFrame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
             
             printf("===================Updated Entry====================\n");
-            printTable(routes, -1);
+            printTable(routes, 0);
             break;
 
         default: // Error
