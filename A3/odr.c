@@ -44,28 +44,32 @@ void printInterface(struct hwa_info *hwa) {
 
 }
 
+char* ethAddrNtoP(char *MAC, char *tempMAC) {
+    char buf[10];
+    int i;
+
+    tempMAC[0] = '\0';
+    for (i = 0; i < 6; i++) {
+        sprintf(buf, "%.2x%s", MAC[i], i == 5 ? "" : ":");
+        strcat(tempMAC, buf);
+    }
+    return tempMAC;
+}
+
 void printPacket(EthernetFrame *etherFrame,uint32_t length) {
 
+    char buffer[20];
     int i;
     ODRPacket *packet = &(etherFrame->packet);
 
     printf ("\nEthernet frame header:\n");
 
-    printf ("Destination MAC (this node): ");
-    for (i=0; i<=5; i++) {
-        printf ("%02x:", etherFrame->destMAC[i]);
-    }
-    printf ("\n");
+    printf ("Destination MAC (this node): %s\n", ethAddrNtoP(etherFrame->destMAC), buffer);
+    printf ("Source MAC (this node): %s\n", ethAddrNtoP(etherFrame->sourceMAC), buffer);
 
-    printf ("Source MAC: ");
-    for (i=0; i<=5; i++) {
-        printf ("%02x:", etherFrame->sourceMAC[i]);
-    } 
-    printf("\n");
+    printf("Ethernet Type Code: %x \n", etherFrame->protocol[0] << 8 + etherFrame->protocol[1]);
 
-    printf("Ethernet Type Code: %u \n", (((etherFrame->protocol[0]) <<8 ) + etherFrame->protocol[1] ));
-
-    printf ("\nODR packet header:\n");
+    printf ("ODR packet header:\n");
     printf("Packet Type: %u", packet->type);
     printf("Source IP: %s   Port no: %u \n", packet->sourceIP, packet->sourcePort);
     printf("Destination IP: %s   Port no: %u \n", packet->destIP, packet->destPort);
@@ -87,31 +91,67 @@ void printPacket(EthernetFrame *etherFrame,uint32_t length) {
     return;
 }
 
-int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16_t outIfaceNum, int socket) {
+void sendEthernetPacket(int sockfd, EthernetFrame *frame, SA *sockAddr, int saLen) {
+    ODRPacket *packet;
+    int retVal;
+
+    packet = &(frame->packet);
+    packet->sourcePort = htonl(packet->sourcePort);
+    packet->destPort   = htonl(packet->destPort);
+    packet->hopCount   = htonl(packet->hopCount);
+    packet->broadID    = htonl(packet->broadID);
+
+    retVal = sendto(sockfd, (void *)frame, sizeof(EthernetFrame), 0, sockAddr, saLen);
+    if (retVal == -1) {
+        err_sys("Error in sending Ethernet packet");
+    }
+}
+
+void receiveODRPacket(int sockfd, EthernetFrame *frame) {
+    ODRPacket *packet;
+    int len;
+
+    len = Recvfrom(sockfd, frame, sizeof(EthernetFrame), 0, NULL, NULL);
+
+    if (len < 0) {
+        err_sys("Error in receiving Ethernet packet");
+    }
+
+    packet = &(frame->packet);
+    packet->sourcePort = ntohl(packet->sourcePort);
+    packet->destPort   = ntohl(packet->destPort);
+    packet->hopCount   = ntohl(packet->hopCount);
+    packet->broadID    = ntohl(packet->broadID);
+
+    // Print out contents of received ethernet frame
+    printPacket(frame, len);
+}
+
+int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16_t outIfaceNum, int sockfd) {
 
     int retVal;
     uint16_t protocol = htons(PROTOCOL_NUMBER);
 
     /*target address*/
-    struct sockaddr_ll socketAddress;
+    struct sockaddr_ll sockAddr;
     EthernetFrame frame;
 
-    bzero(&socketAddress, sizeof(socketAddress));
+    bzero(&sockAddr, sizeof(sockAddr));
 
     /*RAW communication*/
-    socketAddress.sll_family   = PF_PACKET;    
-    socketAddress.sll_protocol = htons(ETH_P_IP);
+    sockAddr.sll_family   = PF_PACKET;
+    sockAddr.sll_protocol = htons(PROTOCOL_NUMBER);
 
     /*ARP hardware identifier is ethernet*/
-    socketAddress.sll_hatype   = ARPHRD_ETHER;
+    sockAddr.sll_hatype   = ARPHRD_ETHER;
 
     /*target is another host*/
-    socketAddress.sll_pkttype  = PACKET_OTHERHOST;
+    sockAddr.sll_pkttype  = PACKET_OTHERHOST;
 
     /*address length*/
-    socketAddress.sll_halen    = ETH_ALEN;
+    sockAddr.sll_halen    = ETH_ALEN;
 
-    memcpy(&(socketAddress.sll_addr), destMAC, sizeof(destMAC));
+    memcpy(&(sockAddr.sll_addr), destMAC, sizeof(destMAC));
 
     memcpy(&(frame.destMAC), destMAC, sizeof(destMAC));
 
@@ -119,18 +159,12 @@ int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16
     memcpy(&(frame.packet), packet, sizeof(ODRPacket));
 
     memcpy(&(frame.sourceMAC), srcMAC, sizeof(srcMAC));
-    socketAddress.sll_ifindex  = outIfaceNum;
+    sockAddr.sll_ifindex  = outIfaceNum;
 
     // Increment Hop count in the packet
     packet->hopCount = (packet->hopCount) + 1;
 
-    // TODO: Need to convert via htonl
-    retVal = sendto(socket, (void *) &frame, sizeof(EthernetFrame), 
-            0, (struct sockaddr *)&socketAddress, sizeof(socketAddress));
-    if (retVal == -1) {
-        perror("Error in Sending packet");
-    }
-    return;
+    sendEthernetPacket(sockfd, &frame, (SA*) &sockAddr, sizeof(sockAddr));
 }
 
 // Function that would check and clear up waiting packets in the buffer
@@ -165,18 +199,6 @@ int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList
     routes[destIndex].waitListHead = NULL;
 
     return packetSent;
-}
-
-char* ethAddrNtoP(char *MAC, char *tempMAC) {
-    char buf[10];
-    int i;
-
-    tempMAC[0] = '\0';
-    for (i = 0; i < 6; i++) {
-        sprintf(buf, "%.2x%s", MAC[i], i == 5 ? "" : ":");
-        strcat(tempMAC, buf);
-    }
-    return tempMAC;
 }
 
 void printTable(RoutingTable *routes, int specific) {
@@ -310,22 +332,22 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
     uint16_t protocol = htons(PROTOCOL_NUMBER);
 
     /*target address*/
-    struct sockaddr_ll socketAddress;
+    struct sockaddr_ll sockAddr;
     EthernetFrame frame;
 
     /*RAW communication*/
-    socketAddress.sll_family   = PF_PACKET;
-    socketAddress.sll_protocol = htons(PROTOCOL_NUMBER);
+    sockAddr.sll_family   = PF_PACKET;
+    sockAddr.sll_protocol = htons(PROTOCOL_NUMBER);
 
     /*ARP hardware identifier is ethernet*/
-    socketAddress.sll_hatype   = ARPHRD_ETHER;
+    sockAddr.sll_hatype   = ARPHRD_ETHER;
 
     /*target is another host*/
-    socketAddress.sll_pkttype  = PACKET_OTHERHOST;
+    sockAddr.sll_pkttype  = PACKET_OTHERHOST;
 
     /*address length*/
-    socketAddress.sll_halen    = ETH_ALEN;
-    memcpy(&(socketAddress.sll_addr), broadMAC, sizeof(broadMAC));
+    sockAddr.sll_halen    = ETH_ALEN;
+    memcpy(&(sockAddr.sll_addr), broadMAC, sizeof(broadMAC));
 
     memcpy(&(frame.destMAC), broadMAC, sizeof(broadMAC));
 
@@ -340,14 +362,10 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
         if (index != exceptInterface) {
 
             memcpy(&(frame.sourceMAC), (ifaceList[index]).ifaceMAC, sizeof(frame.sourceMAC));
-            socketAddress.sll_ifindex  = ifaceList[index].ifaceNum;
+            sockAddr.sll_ifindex  = ifaceList[index].ifaceNum;
 
-            // TODO: Need to convert via htonl
-            retVal = sendto((ifaceList[index]).ifaceSocket, (void *) &frame, sizeof(EthernetFrame), 
-                    0, (SA *)&socketAddress, sizeof(socketAddress));
-            if (retVal == -1) {
-                perror("Error in Flooding packet");
-            }
+            sendEthernetPacket(ifaceList[index].ifaceSocket, &frame, (SA*) &sockAddr,
+                                sizeof(sockAddr));
         }
     }
     return;
@@ -540,7 +558,6 @@ int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *iface
 
 int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_set fdSet, RoutingTable* routes) {
     int maxfd, index;
-    int length = 0; /*length of the received frame*/ 
     EthernetFrame etherFrame; /*Buffer for ethernet frame*/
     fd_set readFdSet;
     int i;
@@ -555,7 +572,7 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
     while (1) {
         readFdSet = fdSet;
         Select(maxfd, &readFdSet, NULL, NULL, NULL);
-        printf("Recieved new packet");
+
         // Check if got a packet on an unix domain socket
         if (FD_ISSET(unixSockFd, &readFdSet)) {
             ODRPacket packet;
@@ -566,15 +583,7 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
         // Check if got a packet on an iface socket
         for (index = 0; index < totalIfaceSock; index++) {
             if (FD_ISSET(ifaceList[index].ifaceSocket, &readFdSet)) {
-                length = Recvfrom(ifaceList[index].ifaceSocket, &etherFrame, sizeof(etherFrame), 0, NULL, NULL);
-                // TODO: Need to convert via ntohl
-
-                if (length < 0) {
-                    printf("Error in receiving packet");
-                }
-
-                // Print out contents of received ethernet frame
-                printPacket(&etherFrame, length);
+                receiveODRPacket(ifaceList[index].ifaceSocket, &etherFrame);
 
                 // Process frame
                 processFrame(&etherFrame, routes, unixSockFd, ifaceList, index, totalIfaceSock);

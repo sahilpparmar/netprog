@@ -25,8 +25,8 @@ typedef struct {
     uint32_t destPort;
     uint32_t hopCount;
     uint32_t broadID;
-    bool Asent;
-    bool forceRedisc; 
+    char Asent;
+    char forceRedisc;
     char data[MAX_PAYLOAD_LEN];
 } ODRPacket;
 
