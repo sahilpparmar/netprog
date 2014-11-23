@@ -1,8 +1,9 @@
 #ifndef _ODR_H
 #define _ODR_H
 
-#define PROTOCOL_NUMBER 0x5445
+#define PROTOCOL_NUMBER 0x5454
 #define IPLEN           30      // bytes
+#define MACLEN          6       // bytes
 #define STALENESS       5       // sec (TODO get from client)
 #define MAX_PAYLOAD_LEN 100     // bytes
 #define FP_MAP_STALE_VAL 5      // sec
@@ -32,16 +33,16 @@ typedef struct {
 
 //Ethernet Frame
 typedef struct {
-    uint8_t destMAC[6]; 
-    uint8_t sourceMAC[6];
-    uint8_t protocol[2];
+    uint8_t destMAC[MACLEN]; 
+    uint8_t sourceMAC[MACLEN];
+    uint16_t protocol;
     ODRPacket packet; 
 } EthernetFrame;
 
 typedef struct {
     int ifaceNum;
     int ifaceSocket;
-    uint8_t ifaceMAC[6];
+    uint8_t ifaceMAC[MACLEN];
 } IfaceInfo;
 
 
@@ -54,8 +55,8 @@ typedef struct WaitingPacket {
 typedef struct {
     bool isValid;
     uint32_t broadID;
-    uint32_t ifaceNum;
-    uint8_t nextHopMAC[6];
+    uint32_t ifaceInd;
+    uint8_t nextHopMAC[MACLEN];
     uint32_t hopCount;
     uint32_t timeStamp;
     WaitingPacket* waitListHead;

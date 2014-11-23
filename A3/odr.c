@@ -54,31 +54,37 @@ char* ethAddrNtoP(char *MAC, char *tempMAC) {
     int i;
 
     tempMAC[0] = '\0';
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < MACLEN; i++) {
         sprintf(buf, "%.2x%s", MAC[i] & 0xff , i == 5 ? "" : ":");
         strcat(tempMAC, buf);
     }
     return tempMAC;
 }
 
-void printPacket(EthernetFrame *etherFrame) {
+void printMACAddrs(uint8_t srcMAC[MACLEN], uint8_t destMAC[MACLEN]) {
+    char buffer[20];
+    printf ("**Destination MAC: %s\n", ethAddrNtoP(destMAC, buffer));
+    printf ("**Source MAC: %s\n", ethAddrNtoP(srcMAC, buffer));
+}
+
+void printPacket(EthernetFrame *frame) {
 
     char buffer[20];
     int i;
-    ODRPacket *packet = &(etherFrame->packet);
+    ODRPacket *packet = &(frame->packet);
 
     if (DEBUG != TRUE) 
         return;
 
     printf ("\nEthernet frame header:\n");
 
-    printf ("Destination MAC (this node): %s\n", ethAddrNtoP(etherFrame->destMAC, buffer));
-    printf ("Source MAC (this node): %s\n", ethAddrNtoP(etherFrame->sourceMAC, buffer));
+    printf ("Destination MAC: %s\n", ethAddrNtoP(frame->destMAC, buffer));
+    printf ("Source MAC: %s\n", ethAddrNtoP(frame->sourceMAC, buffer));
 
-    printf("Ethernet Type Code: %x \n", etherFrame->protocol[0] << 8 + etherFrame->protocol[1]);
+    printf("Ethernet Type Code: %x \n", frame->protocol);
 
-    printf ("ODR packet header:\n");
-    printf("Packet Type: %u", packet->type);
+    printf ("ODR packet header =>\n");
+    printf("Packet Type: %u\n", packet->type);
     printf("Source IP: %s   Port no: %u \n", packet->sourceIP, packet->sourcePort);
     printf("Destination IP: %s   Port no: %u \n", packet->destIP, packet->destPort);
     printf("Hop count: %u \n", packet->hopCount);
@@ -103,6 +109,8 @@ void sendEthernetPacket(int sockfd, EthernetFrame *frame, SA *sockAddr, int saLe
     ODRPacket *packet;
     int retVal;
 
+    printPacket(frame);
+
     packet = &(frame->packet);
     packet->sourcePort = htonl(packet->sourcePort);
     packet->destPort   = htonl(packet->destPort);
@@ -119,6 +127,7 @@ void receiveODRPacket(int sockfd, EthernetFrame *frame) {
     ODRPacket *packet;
     int len;
 
+    bzero(frame, sizeof(EthernetFrame));
     len = Recvfrom(sockfd, frame, sizeof(EthernetFrame), 0, NULL, NULL);
 
     if (len < 0) {
@@ -132,20 +141,21 @@ void receiveODRPacket(int sockfd, EthernetFrame *frame) {
     packet->broadID    = ntohl(packet->broadID);
 }
 
-int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16_t outIfaceNum, int sockfd) {
-
+int sendonIFace(ODRPacket *packet, uint8_t srcMAC[MACLEN], uint8_t destMAC[MACLEN],
+    uint16_t outIfaceNum, int sockfd)
+{
     int retVal;
-    uint16_t protocol = htons(PROTOCOL_NUMBER);
 
     /*target address*/
     struct sockaddr_ll sockAddr;
     EthernetFrame frame;
 
     bzero(&sockAddr, sizeof(sockAddr));
+    bzero(&frame, sizeof(frame));
 
     /*RAW communication*/
     sockAddr.sll_family   = PF_PACKET;
-    sockAddr.sll_protocol = protocol;
+    sockAddr.sll_protocol = htons(PROTOCOL_NUMBER);
 
     /*ARP hardware identifier is ethernet*/
     sockAddr.sll_hatype   = ARPHRD_ETHER;
@@ -156,15 +166,13 @@ int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16
     /*address length*/
     sockAddr.sll_halen    = ETH_ALEN;
 
-    memcpy(&(sockAddr.sll_addr), destMAC, sizeof(destMAC));
-
-    memcpy(&(frame.destMAC), destMAC, sizeof(destMAC));
-
-    memcpy(&(frame.protocol), (void *)&protocol, sizeof(frame.protocol));
-    memcpy(&(frame.packet), packet, sizeof(ODRPacket));
-
-    memcpy(&(frame.sourceMAC), srcMAC, sizeof(srcMAC));
+    memcpy(sockAddr.sll_addr, destMAC, MACLEN);
     sockAddr.sll_ifindex  = outIfaceNum;
+
+    memcpy(frame.sourceMAC, srcMAC, MACLEN);
+    memcpy(frame.destMAC, destMAC, MACLEN);
+    memcpy(&(frame.packet), packet, sizeof(ODRPacket));
+    frame.protocol = htons(PROTOCOL_NUMBER);
 
     // Increment Hop count in the packet
     packet->hopCount = (packet->hopCount) + 1;
@@ -175,21 +183,22 @@ int sendonIFace(ODRPacket *packet, uint8_t srcMAC[6], uint8_t destMAC[6], uint16
 // Function that would check and clear up waiting packets in the buffer
 int sendWaitingPackets(int destIndex, RoutingTable *routes, IfaceInfo *ifaceList) {
 
-    uint8_t srcMAC[6], dstMAC[6];
-    uint16_t outIfaceNum;
+    uint8_t srcMAC[MACLEN], dstMAC[MACLEN];
+    uint16_t outIfaceInd, outIfaceNum;
     int outSocket;
     int packetSent = 0;
     WaitingPacket *waitingPackets;
     WaitingPacket *freePacket;
 
     assert(routes[destIndex].isValid && "Route Entry should be present");
-    outIfaceNum = routes[destIndex].ifaceNum;
-    outSocket = ifaceList[outIfaceNum].ifaceSocket;
+    outIfaceInd = routes[destIndex].ifaceInd;
+    outIfaceNum = ifaceList[outIfaceInd].ifaceNum;
+    outSocket = ifaceList[outIfaceInd].ifaceSocket;
 
     waitingPackets = routes[destIndex].waitListHead;
     freePacket = routes[destIndex].waitListHead;
-    memcpy(dstMAC, routes[destIndex].nextHopMAC, sizeof(dstMAC));
-    memcpy(srcMAC, ifaceList[outIfaceNum].ifaceMAC, sizeof(srcMAC));
+    memcpy(dstMAC, routes[destIndex].nextHopMAC, MACLEN);
+    memcpy(srcMAC, ifaceList[outIfaceInd].ifaceMAC, MACLEN);
 
     while (waitingPackets != NULL) {
 
@@ -213,18 +222,18 @@ void printTable(RoutingTable *routes, int specific) {
     if (DEBUG != TRUE) 
         return;
     printf("===================================================================================================================================\n");
-    printf("Destination Node |   isValid  |     broadID     |   ifaceNum |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
+    printf("Destination Node |   isValid  |     broadID     |   ifaceInd |           nextHopMAC       | hopCount |  timestamp  | waitListHead |\n");
     printf("===================================================================================================================================\n");
 
     if (specific != 0) {
-        printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t\t  |%10d| %10u  | %12p |\n",
-                specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceNum,
+        printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
+                specific,   routes[specific].isValid, routes[specific].broadID, routes[specific].ifaceInd,
                 ethAddrNtoP(routes[specific].nextHopMAC, MACTemp), routes[specific].hopCount, routes[specific].timeStamp, routes[specific].waitListHead);
     }
     else {
         for(i=1; i< (TOTAL_VMS + 1); i++) {
-            printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t\t  |%10d| %10u  | %12p |\n",
-                    i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceNum,
+            printf(" VM %10d \t | %10d | %10d\t| %10d | %15s\t  |%10d| %10u  | %12p |\n",
+                    i,   routes[i].isValid, routes[i].broadID, routes[i].ifaceInd,
                     ethAddrNtoP(routes[i].nextHopMAC, MACTemp), routes[i].hopCount, routes[i].timeStamp, routes[i].waitListHead);
         }
     }
@@ -262,7 +271,7 @@ void setAsentFlag(ODRPacket *packet) {
     return;
 }
 
-bool createUpdateRouteEntry(EthernetFrame *frame, int inIface, RoutingTable *routes, IfaceInfo *ifaceList) {
+bool createUpdateRouteEntry(EthernetFrame *frame, int ifaceInd, RoutingTable *routes, IfaceInfo *ifaceList) {
     int srcNode;
 
     ODRPacket *packet = &(frame->packet);
@@ -277,14 +286,16 @@ bool createUpdateRouteEntry(EthernetFrame *frame, int inIface, RoutingTable *rou
     {
         routeEntry->isValid = TRUE;
         routeEntry->broadID = packet->broadID;
-        routeEntry->ifaceNum = inIface;
-        memcpy(routeEntry->nextHopMAC, frame->sourceMAC, sizeof(frame->sourceMAC));
+        routeEntry->ifaceInd = ifaceInd;
+        memcpy(routeEntry->nextHopMAC, frame->sourceMAC, MACLEN);
         routeEntry->hopCount = packet->hopCount;
+        routeEntry->timeStamp = (uint32_t) time(NULL);
 
+        printf("===================Updated Entry====================\n");
+        printTable(routes, srcNode);
         printf("Cleared Waiting Queue for src Node: VM%d, Packets Sent: %d\n",
                 srcNode, sendWaitingPackets(srcNode, routes, ifaceList));
 
-        routeEntry->timeStamp = (uint32_t) time (NULL); 
         return TRUE;
     }
     return FALSE;
@@ -295,15 +306,15 @@ int fillODRPacket(ODRPacket *packet, packetType type, char *srcIP, char *dstIP,
                   bool Asent, bool forceRedisc, char* data, int length)
 {
     packet->type = type;
-    memcpy(&(packet->sourceIP), srcIP, IPLEN);
-    memcpy(&(packet->destIP), dstIP, IPLEN);
+    memcpy(packet->sourceIP, srcIP, IPLEN);
+    memcpy(packet->destIP, dstIP, IPLEN);
     packet->sourcePort = srcPort;
     packet->destPort = dstPort;
     packet->hopCount = hopCount;
     packet->broadID = broadID;
     packet->Asent = Asent;
     packet->forceRedisc = forceRedisc;
-    memcpy(&(packet->data), data, length);
+    memcpy(packet->data, data, length);
 
     return 1;
 }
@@ -344,11 +355,13 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
     int retVal;
     int index;
     uint8_t broadMAC[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    uint16_t protocol = htons(PROTOCOL_NUMBER);
 
     /*target address*/
     struct sockaddr_ll sockAddr;
     EthernetFrame frame;
+
+    bzero(&sockAddr, sizeof(sockAddr));
+    bzero(&frame, sizeof(frame));
 
     /*RAW communication*/
     sockAddr.sll_family   = PF_PACKET;
@@ -362,12 +375,11 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
 
     /*address length*/
     sockAddr.sll_halen    = ETH_ALEN;
-    memcpy(&(sockAddr.sll_addr), broadMAC, sizeof(broadMAC));
+    memcpy(sockAddr.sll_addr, broadMAC, MACLEN);
 
-    memcpy(&(frame.destMAC), broadMAC, sizeof(broadMAC));
-
-    memcpy(&(frame.protocol), (void *)&protocol, sizeof(frame.protocol));
+    memcpy(frame.destMAC, broadMAC, MACLEN);
     memcpy(&(frame.packet), packet, sizeof(ODRPacket));
+    frame.protocol = htons(PROTOCOL_NUMBER);
 
     // Increment Hop count in the packet
     incHopCount(packet);
@@ -376,7 +388,7 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
 
         if (index != exceptInterface) {
 
-            memcpy(&(frame.sourceMAC), (ifaceList[index]).ifaceMAC, sizeof(frame.sourceMAC));
+            memcpy(frame.sourceMAC, ifaceList[index].ifaceMAC, MACLEN);
             sockAddr.sll_ifindex  = ifaceList[index].ifaceNum;
 
             sendEthernetPacket(ifaceList[index].ifaceSocket, &frame, (SA*) &sockAddr,
@@ -386,7 +398,7 @@ void floodPacket(ODRPacket *packet, IfaceInfo *ifaceList, int exceptInterface, i
     return;
 }
 
-void handleRREQ(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifaceList,
+void handleRREQ(EthernetFrame *frame, RoutingTable *routes, IfaceInfo *ifaceList,
                 int inSockIndex, int totalSockets)
 {
     uint32_t  destIndex;
@@ -397,14 +409,14 @@ void handleRREQ(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
     bool isSrcRouteUpdated;
 
     packet = Malloc(sizeof(ODRPacket));
-    memcpy(packet, &(etherFrame->packet), sizeof(ODRPacket));
+    memcpy(packet, &(frame->packet), sizeof(ODRPacket));
 
     if (checkIfSrcNode(packet)) {
         // Do nothing, RREQ received from original source, stop flooding.
         return;
     }
 
-    isSrcRouteUpdated = createUpdateRouteEntry(etherFrame, inSockIndex, routes, ifaceList);
+    isSrcRouteUpdated = createUpdateRouteEntry(frame, inSockIndex, routes, ifaceList);
 
     if (checkIfDestNode(packet)) {
         if (!packet->Asent) {
@@ -416,7 +428,7 @@ void handleRREQ(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
                     packet->destPort, packet->sourcePort, 0, 0, FALSE,
                     packet->forceRedisc/*TODO Check */, NULL, 0);
 
-            sendonIFace(packet, ifaceList[inSockIndex].ifaceMAC, routes[nwdestNode].nextHopMAC,
+            sendonIFace(&RREPPacket, ifaceList[inSockIndex].ifaceMAC, routes[nwdestNode].nextHopMAC,
                     ifaceList[inSockIndex].ifaceNum, ifaceList[inSockIndex].ifaceSocket); 
         }
         return;
@@ -433,7 +445,7 @@ void handleRREQ(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
                 routes[nwsrcNode].hopCount + 1/*HopCount*/, 0, FALSE,
                 packet->forceRedisc/*TODO Check */, NULL, 0);
 
-        sendonIFace(packet, ifaceList[inSockIndex].ifaceMAC, routes[nwdestNode].nextHopMAC,
+        sendonIFace(&RREPPacket, ifaceList[inSockIndex].ifaceMAC, routes[nwdestNode].nextHopMAC,
                 ifaceList[inSockIndex].ifaceNum, ifaceList[inSockIndex].ifaceSocket); 
 
         // Flood RREQs with Asent flag (if needed)
@@ -447,7 +459,7 @@ void handleRREQ(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
     }
 }
 
-void handleRREP(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifaceList,
+void handleRREP(EthernetFrame *frame, RoutingTable *routes, IfaceInfo *ifaceList,
                 int inSockIndex, int totalSockets)
 {
     uint32_t  outSockIndex;
@@ -456,8 +468,8 @@ void handleRREP(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
     
     packet = Malloc(sizeof(ODRPacket));
 
-    memcpy(packet, &(etherFrame->packet), sizeof(ODRPacket));
-    createUpdateRouteEntry(etherFrame, inSockIndex, routes, ifaceList);
+    memcpy(packet, &(frame->packet), sizeof(ODRPacket));
+    createUpdateRouteEntry(frame, inSockIndex, routes, ifaceList);
 
     if (checkIfDestNode(packet)) {
         // Reached final destination. Data packet already Sent
@@ -466,7 +478,7 @@ void handleRREP(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
 
     if (isRoutePresent(packet, routes)) { // Send RREP to source
         nwdestNode = getVmNodeByIP(packet->destIP);
-        outSockIndex = routes[nwdestNode].ifaceNum;
+        outSockIndex = routes[nwdestNode].ifaceInd;
         incHopCount(packet);
         sendonIFace(packet, ifaceList[outSockIndex].ifaceMAC,
                 routes[nwdestNode].nextHopMAC,
@@ -484,7 +496,7 @@ void handleRREP(EthernetFrame *etherFrame, RoutingTable *routes, IfaceInfo *ifac
     return;
 }
 
-void handleDATA(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockFd,
+void handleDATA(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
                 IfaceInfo *ifaceList, int inSockIndex, int totalSockets)
 {
     uint32_t  outSockIndex;
@@ -492,9 +504,9 @@ void handleDATA(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockFd,
     int nwdestNode;
     
     packet = Malloc(sizeof(ODRPacket));
-    memcpy(packet, &(etherFrame->packet), sizeof(ODRPacket));
+    memcpy(packet, &(frame->packet), sizeof(ODRPacket));
 
-    createUpdateRouteEntry(etherFrame, inSockIndex, routes, ifaceList);
+    createUpdateRouteEntry(frame, inSockIndex, routes, ifaceList);
 
     if (checkIfDestNode(packet)) {
         // Send directly to destPort on local process
@@ -506,7 +518,7 @@ void handleDATA(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockFd,
 
     if (isRoutePresent(packet, routes)) { // Send data to destination
         nwdestNode = getVmNodeByIP(packet->destIP);
-        outSockIndex = routes[nwdestNode].ifaceNum;
+        outSockIndex = routes[nwdestNode].ifaceInd;
         incHopCount(packet);
         sendonIFace(packet, ifaceList[outSockIndex].ifaceMAC,
                 routes[nwdestNode].nextHopMAC,
@@ -525,13 +537,13 @@ void handleDATA(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockFd,
     return;
 }
 
-void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockFd,
+void processFrame(EthernetFrame *frame, RoutingTable *routes, int unixSockFd,
                     IfaceInfo *ifaceList, int inSockIndex, int totalSockets)
 {
     ODRPacket *packet;
-    packet = &(etherFrame->packet);
+    packet = &(frame->packet);
     printf("======= New Packet Received ======\n");
-    printPacket(etherFrame); 
+    printPacket(frame); 
 
     switch (packet->type) {
 
@@ -540,7 +552,7 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
             printTable(routes, 0);
             printf("RREQ packet received!\n");
            
-            handleRREQ(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
+            handleRREQ(frame, routes, ifaceList, inSockIndex, totalSockets);
            
             printf("===================Updated Entry====================\n");
             printTable(routes, 0);
@@ -551,7 +563,7 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
             printTable(routes, 0);
             printf("RREP packet received!\n");
            
-            handleRREP(etherFrame, routes, ifaceList, inSockIndex, totalSockets);
+            handleRREP(frame, routes, ifaceList, inSockIndex, totalSockets);
            
             printf("===================Updated Entry====================\n");
             printTable(routes, 0);
@@ -563,7 +575,7 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
             printTable(routes, 0);
             printf("Data packet received!\n");
             
-            handleDATA(etherFrame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
+            handleDATA(frame, routes, unixSockFd, ifaceList, inSockIndex, totalSockets);
             
             printf("===================Updated Entry====================\n");
             printTable(routes, 0);
@@ -576,17 +588,18 @@ void processFrame(EthernetFrame *etherFrame, RoutingTable *routes, int unixSockF
 }
 
 int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *ifaceList, int totalSockets) {
-    uint8_t srcMAC[6], dstMAC[6];
-    int destIndex, outIfaceNum, outSocket;
+    uint8_t srcMAC[MACLEN], dstMAC[MACLEN];
+    int destIndex, outIfaceInd, outIfaceNum, outSocket;
 
     if (isRoutePresent(packet, routes)) {
         printf("Route is present\n");
         destIndex = getVmNodeByIP(packet->destIP);
-        outIfaceNum = routes[destIndex].ifaceNum;
+        outIfaceInd = routes[destIndex].ifaceInd;
+        outIfaceNum = ifaceList[outIfaceInd].ifaceNum;
         outSocket = ifaceList[outIfaceNum].ifaceSocket;
 
-        memcpy(dstMAC, routes[destIndex].nextHopMAC, sizeof(dstMAC));
-        memcpy(srcMAC, ifaceList[outIfaceNum].ifaceMAC, sizeof(srcMAC));
+        memcpy(dstMAC, routes[destIndex].nextHopMAC, MACLEN);
+        memcpy(srcMAC, ifaceList[outIfaceNum].ifaceMAC, MACLEN);
 
         sendonIFace(packet, srcMAC, dstMAC, outIfaceNum, outSocket);
         return 0;
@@ -606,7 +619,6 @@ int startCommunication(ODRPacket *packet, RoutingTable *routes, IfaceInfo *iface
 
 int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_set fdSet, RoutingTable* routes) {
     int maxfd, index;
-    EthernetFrame etherFrame; /*Buffer for ethernet frame*/
     fd_set readFdSet;
     int i;
 
@@ -631,10 +643,12 @@ int readAllSockets(int unixSockFd, IfaceInfo *ifaceList, int totalIfaceSock, fd_
         // Check if got a packet on an iface socket
         for (index = 0; index < totalIfaceSock; index++) {
             if (FD_ISSET(ifaceList[index].ifaceSocket, &readFdSet)) {
-                receiveODRPacket(ifaceList[index].ifaceSocket, &etherFrame);
+                EthernetFrame frame;
+
+                receiveODRPacket(ifaceList[index].ifaceSocket, &frame);
 
                 // Process frame
-                processFrame(&etherFrame, routes, unixSockFd, ifaceList, index, totalIfaceSock);
+                processFrame(&frame, routes, unixSockFd, ifaceList, index, totalIfaceSock);
             }
         }
     }
@@ -674,11 +688,11 @@ int createIfaceSockets(IfaceInfo **ifaceSockList, fd_set *fdSet) {
                 err_quit("Error in creating PF_PACKET socket for interface: %d", index + 3);
             }
             listenFilter.sll_ifindex = hwa->if_index;
+            memcpy(listenFilter.sll_addr, hwa->if_haddr, MACLEN);
 
             ((*ifaceSockList)[index]).ifaceNum = hwa->if_index;
-            memcpy(((*ifaceSockList)[index]).ifaceMAC, hwa->if_haddr, 6);
+            memcpy(((*ifaceSockList)[index]).ifaceMAC, hwa->if_haddr, MACLEN);
             FD_SET((*ifaceSockList)[index].ifaceSocket, fdSet);
-
             Bind((*ifaceSockList)[index].ifaceSocket, (SA *) &listenFilter, sizeof(listenFilter));
             index++;
         }
