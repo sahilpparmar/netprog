@@ -1,9 +1,10 @@
 #ifndef _ODR_H
 #define _ODR_H
 
-#define PROTOCOL_NUMBER 0x5454
+#define PROTOCOL_NUMBER 0x5445
 #define IPLEN           30      // bytes
 #define MACLEN          6       // bytes
+#define STALENESS       120       // sec (TODO get from client)
 #define MAX_PAYLOAD_LEN 100     // bytes
 #define FP_MAP_STALE_VAL 5.0    // sec
 #define TTL_HOP_COUNT    10     // hops

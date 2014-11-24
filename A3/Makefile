@@ -2,8 +2,8 @@ CC=gcc
 USER=spparmar
 
 #HOME=/mnt/hgfs/SBU-Courses/NP/Assignment/code-ubuntu
-HOME=/users/cse533/Stevens/unpv13e
-#HOME=/home/sahil/netprog/unpv13e
+#HOME=/users/cse533/Stevens/unpv13e
+HOME=/home/sahil/netprog/unpv13e
 
 LIBS = -lpthread ${HOME}/libunp.a
 FLAGS = -g -O2
