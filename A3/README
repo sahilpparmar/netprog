@@ -6,9 +6,13 @@ CSE 533 Assignment 3 (Network Programming)
 Authors: Sahil Parmar  (109242129)
          Himanshu Shah (109324380)
 
+Few points to Note:
+------------------
+- Protocol Number is 0x5454
+- Broadcast ID starts from 8000
+- Port Number for client process starts from 4000
+- Time to live for "Port Val <--> Sun Path" is 5 sec
+- Time to live for RREQ packets is 10 hops
+- Client timeouts every 5 seconds
 
-
-
-
-
-================================================================================
+==========================================================

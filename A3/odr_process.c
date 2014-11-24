@@ -118,11 +118,11 @@ int processUnixPacket(int sockfd, ODRPacket *packet) {
 
     readUnixSocket(sockfd, msg, destIP, &destPort, &forceRedis, srcFile);
     srcPort = getPortNoByFilePath(srcFile);
-    printf("\nPacket received on Unix Domain Socket\n");
+    printf("Packet received on Unix Domain Socket\n");
 
     if (strcmp(destIP, hostIP) == 0) {
         // Send directly to destPort on local process
-        printf("Sending packet to %s:%d\n", hostIP, destPort);
+        printf("Sending DATA to %s:%d (local machine)\n", hostIP, destPort);
         writeUnixSocket(sockfd, hostIP, srcPort, destPort, msg);
         return 0;
     } else {

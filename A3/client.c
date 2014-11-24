@@ -16,8 +16,6 @@ int main() {
     struct sockaddr_un cliAddr;
     char buffer[1024];
     int sockfd;
-    time_t rawtime;
-    struct tm * timeinfo;
 
     getFullPath(filePath, CLI_FILE, sizeof(filePath), TRUE);
     sockfd = createAndBindUnixSocket(filePath);
@@ -55,9 +53,7 @@ jmpToRetransmit:
 
         msg_recv(sockfd, buffer, serverIP, &serverPort);
         alarm(0);
-	time ( &rawtime );
-	timeinfo = localtime ( &rawtime );
-        printf("%15s :Client at node VM%d: received from VM%d => %s\n", asctime(timeinfo), hostNode, serverNode, buffer);
+        printf("Client at node VM%d: received from VM%d => %s\n", hostNode, serverNode, buffer);
     }
 
     err_msg("\nExiting! Thank you!\n");
