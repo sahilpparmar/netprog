@@ -4,7 +4,6 @@
 #define PROTOCOL_NUMBER 0x5454
 #define IPLEN           30      // bytes
 #define MACLEN          6       // bytes
-#define STALENESS       5       // sec (TODO get from client)
 #define MAX_PAYLOAD_LEN 100     // bytes
 #define FP_MAP_STALE_VAL 5      // sec
 #define FIRST_CLI_PORTNO 4000
