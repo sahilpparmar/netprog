@@ -5,7 +5,8 @@
 #define IPLEN           30      // bytes
 #define MACLEN          6       // bytes
 #define MAX_PAYLOAD_LEN 100     // bytes
-#define FP_MAP_STALE_VAL 5      // sec
+#define FP_MAP_STALE_VAL 5.0    // sec
+#define TTL_HOP_COUNT    10     // hops
 #define FIRST_CLI_PORTNO 4000
 #define FIRST_BCAST_ID   8000
 
@@ -57,14 +58,14 @@ typedef struct {
     uint32_t ifaceInd;
     uint8_t nextHopMAC[MACLEN];
     uint32_t hopCount;
-    uint32_t timeStamp;
+    time_t timeStamp;
     WaitingPacket* waitListHead;
 } RoutingTable; // The index of the routingTable array will give the destination index
 
 typedef struct {
     char filePath[1024];
     int portNo;
-    uint32_t timestamp;
+    time_t timestamp;
     bool isValid;
 } FilePortMap;
 

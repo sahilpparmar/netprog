@@ -36,7 +36,7 @@ int main() {
         }
         if (getIPByVmNode(serverIP, serverNode) == NULL) {
             err_msg("Warning: Unable to get IP address, using hostname instead"); 
-            sprintf(serverIP, "vm%d", serverNode);
+            sprintf(serverIP, "VM%d", serverNode);
         }
         serverPort = SER_PORT;
 
@@ -47,13 +47,13 @@ jmpToRetransmit:
 
         if (sigsetjmp(jmpToRetransmit, 1) != 0) {
             forceRediscovery = TRUE;
-            printf("Client at node vm%d: timeout on response from vm%d\n", hostNode, serverNode);
+            printf("Client at node VM%d: timeout on response from VM%d\n", hostNode, serverNode);
             goto jmpToRetransmit;
         }
 
         msg_recv(sockfd, buffer, serverIP, &serverPort);
         alarm(0);
-        printf("Client at node vm%d: recevied from vm%d => %s\n", hostNode, serverNode, buffer);
+        printf("Client at node VM%d: recevied from VM%d => %s\n", hostNode, serverNode, buffer);
     }
 
     err_msg("\nExiting! Thank you!\n");

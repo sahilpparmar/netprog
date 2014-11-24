@@ -32,7 +32,7 @@ static int getPortNoByFilePath(char *filePath) {
 
     for (i = 1; i < filePortMapCnt; i++) {
         if (filePortMap[i].isValid) {
-            if ((time(NULL) - filePortMap[i].timestamp) < FP_MAP_STALE_VAL) {
+            if (difftime(time(NULL), filePortMap[i].timestamp) < FP_MAP_STALE_VAL) {
                 if (strcmp(filePath, filePortMap[i].filePath) == 0) {
                     filePortMap[i].timestamp = time(NULL);
                     return filePortMap[i].portNo;
@@ -62,8 +62,8 @@ static char* getFilePathByPortNo(int portNo) {
             return filePortMap[i].filePath;
         }
     }
-    err_quit("Unknown Port number: %d", portNo);
-    return NULL;
+    err_msg("Unknown Port number: %d", portNo);
+    return "unknown_file_path";
 }
 
 static int readUnixSocket(int sockfd, char *msg, char *destIP, int *destPort, bool *forceRedis, char *srcFile) {
@@ -73,7 +73,9 @@ static int readUnixSocket(int sockfd, char *msg, char *destIP, int *destPort, bo
 
     // Receive data from Client/Server
     len = sizeof(sockAddr);
-    Recvfrom(sockfd, &apiData, sizeof(apiData), 0, (SA *) &sockAddr, &len);
+    if (recvfrom(sockfd, &apiData, sizeof(apiData), 0, (SA *) &sockAddr, &len) < 0) {
+        err_msg("Error in receiving Unix Domain packet");
+    }
 
     memcpy(msg, apiData.data, strlen(apiData.data));
     msg[strlen(apiData.data)] = '\0';
@@ -103,7 +105,9 @@ int writeUnixSocket(int sockfd, char *srcIP, int srcPort, int destPort, char *ms
     strcpy(destAddr.sun_path, getFilePathByPortNo(destPort));
 
     // Send data to Client/Server
-    Sendto(sockfd, &apiData, sizeof(apiData), 0, (SA *) &destAddr, sizeof(destAddr));
+    if (sendto(sockfd, &apiData, sizeof(apiData), 0, (SA *) &destAddr, sizeof(destAddr)) == -1) {
+        err_msg("Error in sending Unix Domain packet");
+    }
 }
 
 // Return 1 if packet needs to be routed through ODR 

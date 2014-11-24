@@ -30,7 +30,7 @@ int main() {
         ticks = time(NULL);
         snprintf(buffer, sizeof(buffer), "%.24s", ctime(&ticks));
         
-        printf("Server at node vm%d: responding to request from vm%d\n", hostNode, getVmNodeByIP(clientIP));
+        printf("Server at node VM%d: responding to request from VM%d\n", hostNode, getVmNodeByIP(clientIP));
         msg_send(sockfd, clientIP, clientPort, buffer, FALSE);
     }
 
