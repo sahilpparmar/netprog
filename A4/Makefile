@@ -16,12 +16,12 @@ ${USER}_tour: tour.o utils.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 tour.o: tour.c
 	${CC} ${CFLAGS} -c -o $@ $^
-utils.o: utils.c
-	${CC} ${CFLAGS} -c -o $@ $^
 
-${USER}_arp: arp.o
+${USER}_arp: arp.o utils.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 arp.o: arp.c
+	${CC} ${CFLAGS} -c -o $@ $^
+utils.o: utils.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
 clean:

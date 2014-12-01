@@ -3,7 +3,8 @@
 #include "tour.h"
 IP HostIP;
 
-void startTour(char* IP, int max) {
+void startTour(IP *IPList, int max) {
+    printf("Initializing Tour\n");
 
 }
 
@@ -17,8 +18,8 @@ int main(int argc, char* argv[]) {
 
     int i;
 
-    getIPByVMNode(&HostIP, getHostVmNodeNo());
-    printf("Tour module running on VM%d with IP:%s\n", getHostVMNodeNo(), HostIP);
+    getIPByVmNode(HostIP, getHostVmNodeNo());
+    printf("Tour module running on VM%d with IP:%s\n", getHostVmNodeNo(), HostIP);
 
     if(argc == 1) {
         printf("No Tour specified\n");
@@ -32,7 +33,7 @@ int main(int argc, char* argv[]) {
             getIPByVmNode(IPList[i], nodeNo);
             printf("%d : VM%d ---> %s\n",i, nodeNo, IPList[i]);
         }
-        memcpy(IPList[0], HostIP, sizeof(HostIP));
-        startTour(&IPList, i);
+        memcpy((void *)IPList[0], (void *)HostIP, sizeof(HostIP));
+        startTour(IPList, i);
     }
 }
