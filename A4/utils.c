@@ -1,5 +1,5 @@
 #include "utils.h"
-#include "unp.h"
+
 int getVmNodeByIP(char *ip) {
     struct hostent *hostInfo = NULL;
     struct in_addr ipInfo;
@@ -36,3 +36,37 @@ int getHostVmNodeNo() {
     }
     return nodeNo;
 }
+
+char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp) {
+
+    if (getcwd(fullPath, size) == NULL) {
+        err_msg("Unable to get pwd via getcwd()");
+    }
+
+    strcat(fullPath, fileName);
+
+    if (isTemp) {
+        if (mkstemp(fullPath) == -1) {
+            err_msg("Unable to get temp file via mkstemp()");
+        }
+    }
+
+    return fullPath;
+}
+
+int createAndBindUnixSocket(char *filePath) {
+    struct sockaddr_un sockAddr;
+    int sockfd;
+
+    sockfd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
+
+    bzero(&sockAddr, sizeof(sockAddr));
+    sockAddr.sun_family = AF_LOCAL;
+    strcpy(sockAddr.sun_path, filePath);
+
+    unlink(filePath);
+    Bind(sockfd, (SA*) &sockAddr, sizeof(sockAddr));
+
+    return sockfd;
+}
+

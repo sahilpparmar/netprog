@@ -17,13 +17,16 @@ ${USER}_tour: tour.o utils.o
 tour.o: tour.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
-${USER}_arp: arp.o utils.o
+${USER}_arp: arp.o utils.o get_hw_addrs.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 arp.o: arp.c
 	${CC} ${CFLAGS} -c -o $@ $^
+
 utils.o: utils.c
+	${CC} ${CFLAGS} -c -o $@ $^
+get_hw_addrs.o: get_hw_addrs.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
 clean:
-	rm -f ${USER}_tour ${USER}_arp *.o
+	rm -f ${USER}_tour ${USER}_arp tmp-* *.o
 
