@@ -1,4 +1,4 @@
-#include <stdio.h>
 #include "arp.h"
-void main() {
+
+int main() {
 }

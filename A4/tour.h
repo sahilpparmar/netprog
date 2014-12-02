@@ -1,17 +1,22 @@
+#ifndef _TOUR_H
+#define _TOUR_H
+
+#include "utils.h"
+
+#define MAXHOPS 100
+
 /*
-################################ Message format ###############################
-| IP Multicast Address | Port number | Current Index | MAX HOPS| IP LIST       |
-| STRING NUMBER        |   UINT_16   |   UINT_16     | UINT_16 | ARRAY IP[MAX] |
-|##############################################################################
+    ########################### TOUR Message format ######################
+    | IP Multicast Address | Port number | Current Index | IP LIST       |
+    | STRING NUMBER        |   UINT_16   |   UINT_16     | ARRAY IP[MAX] |
+    |#####################################################################
 */
-#define IPLEN 30
-#define MAXHOPS 50
-typedef char IP[IPLEN];
+
 typedef struct {
     IP multicastIP;
-    int multicastPort;
-    int curIndex;
-    int maxHops;
+    uint16_t multicastPort;
+    uint16_t curIndex;
     IP tourList[MAXHOPS];
-}TourPayload;
+} TourPayload;
 
+#endif /* !_TOUR_H */
