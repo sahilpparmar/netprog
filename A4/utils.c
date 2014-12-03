@@ -36,3 +36,34 @@ int getHostVmNodeNo() {
     }
     return nodeNo;
 }
+static char* getParam(FILE *fp, char *ptr, int n) {
+    char line[MAXLINE];
+
+    if (fgets(line, n, fp) == NULL || strlen(line) == 0) {
+        return NULL;
+    }
+    
+    if (sscanf(line, "%s", ptr) > 0)
+        return ptr;
+    return NULL;
+}
+
+char* getStringParamValue(FILE *inp_file, char *paramVal) {
+    if (getParam(inp_file, paramVal, PARAM_SIZE) == NULL) {
+        err_quit("Invalid parameter\n");
+    }
+    return paramVal;
+}
+
+int getIntParamValue(FILE *inp_file) {
+    char paramStr[PARAM_SIZE];
+    int paramIVal;
+
+    if (getParam(inp_file, paramStr, PARAM_SIZE) == NULL ||
+        ((paramIVal = atoi(paramStr)) == 0)
+    ) {
+        err_quit("Invalid parameter\n");
+    }
+    return paramIVal;
+}
+

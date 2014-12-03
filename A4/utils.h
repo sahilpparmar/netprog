@@ -5,6 +5,7 @@
 #include <setjmp.h>
 #include "unp.h"
 
+#define CLIENT_IN "tour.in"
 #define IPLEN 30
 typedef char IP[IPLEN];
 
