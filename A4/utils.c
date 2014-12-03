@@ -54,19 +54,9 @@ char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp) {
     return fullPath;
 }
 
-int createAndBindUnixSocket(char *filePath) {
-    struct sockaddr_un sockAddr;
-    int sockfd;
-
-    sockfd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
-
-    bzero(&sockAddr, sizeof(sockAddr));
-    sockAddr.sun_family = AF_LOCAL;
-    strcpy(sockAddr.sun_path, filePath);
-
-    unlink(filePath);
-    Bind(sockfd, (SA*) &sockAddr, sizeof(sockAddr));
-
-    return sockfd;
+bool isSameIPAddr(IA ip1, IA ip2) {
+    if (ip1.s_addr == ip2.s_addr)
+        return TRUE;
+    return FALSE;
 }
 

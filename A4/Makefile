@@ -17,9 +17,11 @@ ${USER}_tour: tour.o utils.o
 tour.o: tour.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
-${USER}_arp: arp.o utils.o get_hw_addrs.o
+${USER}_arp: arp.o utils.o get_hw_addrs.o arp_cache.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 arp.o: arp.c
+	${CC} ${CFLAGS} -c -o $@ $^
+arp_cache.o: arp_cache.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
 utils.o: utils.c

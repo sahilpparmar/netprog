@@ -10,6 +10,7 @@
 
 #define IPLEN 30
 typedef char IP[IPLEN];
+typedef struct in_addr IA;
 
 typedef enum {
     TRUE  = 1,
@@ -20,6 +21,6 @@ int getVmNodeByIP(char *ip);
 char* getIPByVmNode(char *ip, int node);
 int getHostVmNodeNo();
 char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp);
-int createAndBindUnixSocket(char *filePath);
+bool isSameIPAddr(IA ip1, IA ip2);
 
 #endif /* !_UTILS_H */
