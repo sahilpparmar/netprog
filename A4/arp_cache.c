@@ -13,8 +13,14 @@ ARPCache* searchARPCache(IA ipAddr) {
     return NULL;
 }
 
-bool updateARPCache(IA ipAddr, char *hwAddr, uint16_t ifindex, uint16_t hatype,
-                    uint32_t connfd, bool forceUpdate)
+void invalidateCache(IA ipAddr) {
+    ARPCache *entry = searchARPCache(ipAddr);
+    assert(entry != NULL && "Invalid cache entry to invalidate");
+    entry->isValid = FALSE;
+}
+
+bool updateARPCache(IA ipAddr, char *hwAddr, int ifindex, uint8_t hatype,
+                    int connfd, bool forceUpdate)
 {
     int i, updateInd;
 
@@ -34,10 +40,10 @@ bool updateARPCache(IA ipAddr, char *hwAddr, uint16_t ifindex, uint16_t hatype,
     if (forceUpdate || (updateInd != cacheEntries)) {
         // Update Cache Entry
         arpCache[updateInd].isValid = TRUE;
-        arpCache[updateInd].ipAddr = ipAddr;
+        arpCache[updateInd].ipAddr  = ipAddr;
         arpCache[updateInd].ifindex = ifindex;
-        arpCache[updateInd].hatype = hatype;
-        arpCache[updateInd].connfd = connfd;
+        arpCache[updateInd].hatype  = hatype;
+        arpCache[updateInd].connfd  = connfd;
         if (hwAddr) {
             memcpy(arpCache[updateInd].hwAddr, hwAddr, IF_HADDR);
         }

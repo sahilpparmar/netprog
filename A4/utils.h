@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <setjmp.h>
 #include "unp.h"
+#include "hw_addrs.h"
 
 #define ARP_FILE    "/tmp-arp"
 #define TOUR_FILE   "/tmp-tour-xxxxxx"
