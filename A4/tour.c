@@ -201,7 +201,7 @@ static void ListenOnSockets() {
         
     
         Inet_ntop(AF_INET, &source, sourceIP, sizeof(socklen_t));     
-        printf("Packet received from VM%d\n", getVmNodeByIP(sourceIP));
+        printf("Packet received from VM%d\n", getVmNodeByIPStr(sourceIP));
     }
 }
 
@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
     IP charIP;
     int i;
 
-    getIPByVmNode(charIP, getHostVmNodeNo());
+    getIPStrByVmNode(charIP, getHostVmNodeNo());
     Inet_pton(AF_INET, charIP, &HostIP);     
 
     printf("Tour module running on VM%d with IP:%s\n", getHostVmNodeNo(), charIP);
@@ -246,7 +246,6 @@ int main(int argc, char* argv[]) {
 
     if (argc == 1) {
         printf("No Tour specified\n");
-        createSockets();
         printf("Running in Listening Mode\n");
         ListenOnSockets();
 
@@ -254,7 +253,7 @@ int main(int argc, char* argv[]) {
     else {
         for (i = 1; i < argc; i++) {
             nodeNo = atoi(argv[i]+2);
-            getIPByVmNode(charIP, nodeNo);
+            getIPStrByVmNode(charIP, nodeNo);
             printf("%d : VM%d ---> %s\n",i, nodeNo, charIP);
             Inet_pton(AF_INET, charIP, &IPList[i]);     
         }
