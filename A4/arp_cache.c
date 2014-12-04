@@ -11,8 +11,8 @@ static void printARPCache() {
     printf("============================================================================\n");
     for (i = 0; i < cacheEntries; i++) {
         if (arpCache[i].isValid) {
-            printf("| %18x | %23s | %7d | %6d | %6d |\n",
-                arpCache[i].ipAddr.s_addr,
+            printf("| %18s | %23s | %7d | %6d | %6d |\n",
+                getIPStrByIPAddr(arpCache[i].ipAddr),
                 ethAddrNtoP(arpCache[i].hwAddr),
                 arpCache[i].ifindex,
                 arpCache[i].hatype,
@@ -38,7 +38,7 @@ void invalidateCache(IA ipAddr) {
     assert(entry != NULL && "Invalid cache entry to invalidate");
     entry->isValid = FALSE;
 
-    printf("Invalidating Cache Entry with IP %x\n", ipAddr.s_addr);
+    printf("Invalidating Cache Entry with IP %s\n", getIPStrByIPAddr(ipAddr));
     printARPCache();
 }
 
@@ -75,7 +75,7 @@ bool updateARPCache(IA ipAddr, char *hwAddr, int ifindex, uint8_t hatype,
             cacheEntries++;
         }
 
-        printf("Updating Cache Entry with IP %x\n", ipAddr.s_addr);
+        printf("Updating Cache Entry with IP %s\n", getIPStrByIPAddr(ipAddr));
         printARPCache();
 
         return TRUE;

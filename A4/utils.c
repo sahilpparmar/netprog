@@ -1,12 +1,12 @@
 #include "utils.h"
 
-int getVmNodeByIP(char *ip) {
+int getVmNodeByIPStr(char *ip) {
     struct hostent *hostInfo = NULL;
-    struct in_addr ipInfo;
+    IA ipAddr;
     int node = 0;
 
-    if (inet_pton(AF_INET, ip, &ipInfo) > 0) {
-        hostInfo = gethostbyaddr(&ipInfo, sizeof(ipInfo), AF_INET);
+    if (inet_pton(AF_INET, ip, &ipAddr) > 0) {
+        hostInfo = gethostbyaddr(&ipAddr, sizeof(ipAddr), AF_INET);
         sscanf(hostInfo->h_name, "vm%d", &node);
     }
     return node;
@@ -25,14 +25,24 @@ char* getIPStrByVmNode(char *ip, int node) {
         return NULL;
 }
 
+char* getIPStrByIPAddr(IA ipAddr) {
+    struct hostent *hostInfo = NULL;
+    static char ipStr[INET_ADDRSTRLEN];
+
+    if (inet_ntop(AF_INET, (void*) &ipAddr, ipStr, INET_ADDRSTRLEN))
+        return ipStr;
+    else
+        return NULL;
+}
+
 IA getIPAddrByVmNode(int node) {
-    char ipStr[100];
-    IA ipInfo = {0};
+    char ipStr[INET_ADDRSTRLEN];
+    IA ipAddr = {0};
 
     if (getIPStrByVmNode(ipStr, node)) {
-        inet_pton(AF_INET, ipStr, &ipInfo);
+        inet_pton(AF_INET, ipStr, &ipAddr);
     }
-    return ipInfo;
+    return ipAddr;
 }
 
 int getHostVmNodeNo() {

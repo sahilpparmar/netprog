@@ -25,7 +25,7 @@ static int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
             eth0AddrPairs[totalPairs].ipaddr = ((struct sockaddr_in*) hwa->ip_addr)->sin_addr;
             memcpy(eth0AddrPairs[totalPairs].hwaddr, hwa->if_haddr, IF_HADDR);
 #if DEBUG
-            printf("Pair => < %x, %s >\n", eth0AddrPairs[totalPairs].ipaddr.s_addr,
+            printf("Pair => < %s, %s >\n", getIPStrByIPAddr(eth0AddrPairs[totalPairs].ipaddr),
                     ethAddrNtoP(eth0AddrPairs[totalPairs].hwaddr));
 #endif
             totalPairs++;
@@ -96,8 +96,8 @@ static void printEthernetFrame(EthernetFrame *frame) {
     printf("HALen: %d\t", packet->halen);
     printf("ProtSize: %d\t", packet->protSize);
     printf("OPType: %d\n", packet->opType);
-    printf("SrcIP: %x\t", packet->srcIP.s_addr);
-    printf("DestIP: %x\n", packet->destIP.s_addr);
+    printf("SrcIP: %s\t", getIPStrByIPAddr(packet->srcIP));
+    printf("DestIP: %s\n", getIPStrByIPAddr(packet->destIP));
     printf("SrcMAC: %s\t", ethAddrNtoP(packet->srcMAC));
     printf("DestMAC: %s\n\n", ethAddrNtoP(packet->destMAC));
 }

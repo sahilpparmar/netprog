@@ -49,6 +49,12 @@ int main(int argc, char* argv[]) {
             nodeNo = atoi(argv[i]+2);
             getIPStrByVmNode(IPList[i], nodeNo);
             printf("%d : VM%d ---> %s\n", i, nodeNo, IPList[i]);
+            {
+                // Testing ARP module
+                char haddr[6];
+                getHWAddrByIPAddr(getIPAddrByVmNode(nodeNo), haddr);
+                printf("MAC ---> %s\n", ethAddrNtoP(haddr));
+            }
         }
         memcpy((void *)IPList[0], (void *)HostIP, sizeof(HostIP));
         startTour(IPList, argc);
