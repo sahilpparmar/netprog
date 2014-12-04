@@ -55,6 +55,25 @@ static int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
     free(hwahead);
 }
 
+static int bindAndListenUnixSocket() {
+    struct sockaddr_un sockAddr;
+    int sockfd;
+
+    sockfd = Socket(AF_LOCAL, SOCK_STREAM, 0);
+
+    bzero(&sockAddr, sizeof(sockAddr));
+    sockAddr.sun_family = AF_LOCAL;
+    getFullPath(filePath, ARP_FILE, sizeof(filePath), FALSE);
+    strcpy(sockAddr.sun_path, filePath);
+
+    unlink(filePath);
+    Bind(sockfd, (SA*) &sockAddr, sizeof(sockAddr));
+
+    Listen(sockfd, LISTENQ);
+
+    return sockfd;
+}
+
 static char* ethAddrNtoP(char *nMAC, char *pMAC) {
     char buf[10];
     int i;
@@ -221,8 +240,8 @@ static int processARPPacket(int pfSockFd, EthernetFrame *frame, struct sockaddr_
     return GET_OP_TYPE(frame);
 }
 
-void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
-                    Eth0AddrPairs *addrPairs, int totalPairs)
+static void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
+                            Eth0AddrPairs *addrPairs, int totalPairs)
 {
     fd_set readFdSet;
     int maxfd, connfd;
@@ -293,25 +312,6 @@ void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
             }
         }
     }
-}
-
-static int bindAndListenUnixSocket() {
-    struct sockaddr_un sockAddr;
-    int sockfd;
-
-    sockfd = Socket(AF_LOCAL, SOCK_STREAM, 0);
-
-    bzero(&sockAddr, sizeof(sockAddr));
-    sockAddr.sun_family = AF_LOCAL;
-    getFullPath(filePath, ARP_FILE, sizeof(filePath), FALSE);
-    strcpy(sockAddr.sun_path, filePath);
-
-    unlink(filePath);
-    Bind(sockfd, (SA*) &sockAddr, sizeof(sockAddr));
-
-    Listen(sockfd, LISTENQ);
-
-    return sockfd;
 }
 
 int main() {

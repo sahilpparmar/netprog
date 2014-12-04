@@ -14,6 +14,6 @@ void readUnixSocket(int connfd, IA *destIPAddr, int *ifindex,
 void writeUnixSocket(int connfd, char *hwaddr) {
     ReceiveFromARP writeData;
     memcpy(&writeData, hwaddr, IF_HADDR);
-    Writen(connfd, &writeData, sizeof(ReceiveFromARP));
+    Writen(connfd, &writeData, sizeof(writeData));
 }
 

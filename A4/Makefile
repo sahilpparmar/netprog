@@ -12,9 +12,11 @@ CFLAGS = ${FLAGS} -I${HOME}/lib
 
 all: ${USER}_tour ${USER}_arp
 
-${USER}_tour: tour.o utils.o
+${USER}_tour: tour.o utils.o tour_api.o
 	${CC} ${FLAGS} -o $@ $^ ${LIBS}
 tour.o: tour.c
+	${CC} ${CFLAGS} -c -o $@ $^
+tour_api.o: tour_api.c
 	${CC} ${CFLAGS} -c -o $@ $^
 
 ${USER}_arp: arp.o utils.o get_hw_addrs.o arp_cache.o arp_api.o
