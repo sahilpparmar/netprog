@@ -211,6 +211,26 @@ static void readIP() {
 
 }
 
+static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
+    HWAddr hwAddr;
+    struct sockaddr_in sockAddr;
+
+    bzero(&sockAddr, sizeof(sockAddr));
+    sockAddr.sin_family = AF_INET;
+    sockAddr.sin_addr   = s_ipaddr;
+    sockAddr.sin_port   = htons(0);
+
+    bzero(&hwAddr, sizeof(hwAddr));
+    hwAddr.sll_ifindex = 2;
+    hwAddr.sll_hatype  = ARPHRD_ETHER;
+    hwAddr.sll_halen   = ETH_ALEN;
+
+    if (areq((SA *) &sockAddr, sizeof(sockAddr), &hwAddr) == 0) {
+        memcpy(s_haddr, hwAddr.sll_addr, ETH_ALEN);
+    }
+    return s_haddr;
+}
+
 int main(int argc, char* argv[]) {
 
     uint32_t IPList[MAXHOPS] = {0};
@@ -246,3 +266,4 @@ int main(int argc, char* argv[]) {
         ListenOnSockets();
     }
 }
+
