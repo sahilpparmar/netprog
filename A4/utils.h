@@ -3,6 +3,9 @@
 
 #include <assert.h>
 #include <setjmp.h>
+#include <sys/socket.h>
+#include <linux/if_packet.h>
+#include <linux/if_arp.h>
 #include "unp.h"
 #include "hw_addrs.h"
 
@@ -19,9 +22,11 @@ typedef enum {
 } bool;
 
 int getVmNodeByIP(char *ip);
-char* getIPByVmNode(char *ip, int node);
+char* getIPStrByVmNode(char *ip, int node);
+IA getIPAddrByVmNode(int node);
 int getHostVmNodeNo();
 char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp);
 bool isSameIPAddr(IA ip1, IA ip2);
+char* ethAddrNtoP(char *nMAC);
 
 #endif /* !_UTILS_H */

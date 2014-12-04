@@ -1,4 +1,5 @@
 #include "arp.h"
+#define DEBUG 0
 
 static char filePath[1024], hostNode, hostIP[IPLEN];
 
@@ -23,6 +24,10 @@ static int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
             // Store Pair information
             eth0AddrPairs[totalPairs].ipaddr = ((struct sockaddr_in*) hwa->ip_addr)->sin_addr;
             memcpy(eth0AddrPairs[totalPairs].hwaddr, hwa->if_haddr, IF_HADDR);
+#if DEBUG
+            printf("Pair => < %x, %s >\n", eth0AddrPairs[totalPairs].ipaddr.s_addr,
+                    ethAddrNtoP(eth0AddrPairs[totalPairs].hwaddr));
+#endif
             totalPairs++;
 
             // Print Pair information
@@ -48,11 +53,14 @@ static int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
                     printf("%.2x%s", *ptr++ & 0xff, (i == 1) ? " " : ":");
                 } while (--i > 0);
             }
-
-            printf("\n         interface index = %d\n\n", hwa->if_index);
+#if DEBUG
+            printf("\n         interface index = %d\n", hwa->if_index);
+#endif
         }
     }
     free(hwahead);
+    printf("\n");
+    return totalPairs;
 }
 
 static int bindAndListenUnixSocket() {
@@ -74,27 +82,24 @@ static int bindAndListenUnixSocket() {
     return sockfd;
 }
 
-static char* ethAddrNtoP(char *nMAC, char *pMAC) {
-    char buf[10];
-    int i;
-
-    pMAC[0] = '\0';
-    for (i = 0; i < IF_HADDR; i++) {
-        sprintf(buf, "%.2x%s", nMAC[i] & 0xff , i == 5 ? "" : ":");
-        strcat(pMAC, buf);
-    }
-    return pMAC;
-}
-
 static void printEthernetFrame(EthernetFrame *frame) {
-    char buffer[25];
+    printf ("Ethernet frame header =>\n");
+    printf ("Destination MAC: %s\n", ethAddrNtoP(frame->destMAC));
+    printf ("Source MAC: %s\n", ethAddrNtoP(frame->srcMAC));
+    printf("Protocol Number: %x\n", frame->protocol);
 
-    printf ("\nEthernet frame header =>\n");
-
-    printf ("Destination MAC: %s\n", ethAddrNtoP(frame->destMAC, buffer));
-    printf ("Source MAC: %s\n", ethAddrNtoP(frame->srcMAC, buffer));
-    printf("Ethernet Type Code: %x \n", frame->protocol);
-    return;
+    ARPPacket *packet = &frame->packet;
+    printf ("ARP header =>\n");
+    printf("Ident Num: %x\t", packet->identNum);
+    printf("HAType: %d\t", packet->hatype);
+    printf("Protocol Num: %x\n", packet->protocol);
+    printf("HALen: %d\t", packet->halen);
+    printf("ProtSize: %d\t", packet->protSize);
+    printf("OPType: %d\n", packet->opType);
+    printf("SrcIP: %x\t", packet->srcIP.s_addr);
+    printf("DestIP: %x\n", packet->destIP.s_addr);
+    printf("SrcMAC: %s\t", ethAddrNtoP(packet->srcMAC));
+    printf("DestMAC: %s\n\n", ethAddrNtoP(packet->destMAC));
 }
 
 static void sendEthernetPacket(int sockfd, EthernetFrame *frame, int ifindex,
@@ -112,8 +117,11 @@ static void sendEthernetPacket(int sockfd, EthernetFrame *frame, int ifindex,
     sockAddr.sll_ifindex  = ifindex;
     memcpy(sockAddr.sll_addr, GET_DEST_MAC(frame), halen);
 
+#if DEBUG
     printf("Sending Ethernet Packet ==>\n");
     printEthernetFrame(frame);
+#endif
+
     if (sendto(sockfd, (void *)frame, sizeof(EthernetFrame), 0,
                (SA *) &sockAddr, sizeof(sockAddr)) == -1)
     {
@@ -142,8 +150,10 @@ static bool recvEthernetPacket(int sockfd, EthernetFrame *frame, struct sockaddr
     assert(((GET_OP_TYPE(frame) == REQUEST) || (GET_OP_TYPE(frame) == REPLY)) &&
                 "Invalid ARP OP type in Ethernet Frame");
 
+#if DEBUG
     printf("Receving Ethernet Packet ==>\n");
     printEthernetFrame(frame);
+#endif
     return TRUE;
 }
 
@@ -201,10 +211,12 @@ static int processARPPacket(int pfSockFd, EthernetFrame *frame, struct sockaddr_
 {
     // ARP Request
     if (GET_OP_TYPE(frame) == REQUEST) {
-        char *destHWAddr;
+        printf("Processing ARP packet of REQUEST type\n");
 
+        char *destHWAddr;
         if ((destHWAddr = checkIfDestNodeReached(GET_DEST_IP(frame), addrPairs, totalPairs)) != NULL) {
             // Reached Destination Node, force update Source Node Info
+            printf("ARP Request Reached Destination Node, sending back ARP REPLY\n");
             updateARPCache(GET_SRC_IP(frame), GET_SRC_MAC(frame),
                 sockAddr->sll_ifindex, sockAddr->sll_hatype, 0, TRUE);
 
@@ -224,6 +236,8 @@ static int processARPPacket(int pfSockFd, EthernetFrame *frame, struct sockaddr_
 
     // ARP Reply
     else {
+        printf("Processing ARP packet of REPLY type\n");
+
         // Get connfd from cache entry
         ARPCache *srcEntry = searchARPCache(GET_SRC_IP(frame));
         assert(srcEntry && "Valid Partial Cache Entry Expected");
@@ -265,6 +279,7 @@ static void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
         // Check if got a FIN packet on connfd
         if (connfd != -1 && FD_ISSET(connfd, &readFdSet)) {
             // Received a FIN packet, remove partial cache entry
+            printf("Received FIN packet from Tour Unix domain socket\n");
             invalidateCache(destIPAddr);
             Close(connfd);
             connfd = -1;
@@ -293,17 +308,19 @@ static void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
             // Accept new connection on unix domain socket
             connfd = Accept(listenfd, NULL, NULL);
             readUnixSocket(connfd, &destIPAddr, &ifindex, &hatype, &halen);
+            printf("Processing Packet on Unix Domain Socket\n");
 
             if ((entry = searchARPCache(destIPAddr)) != NULL) {
                 // ARP entry present, send hwaddr to tour
+                printf("ARP Cache entry Present, sending HW addr to Tour process\n");
                 writeUnixSocket(connfd, entry->hwAddr);
                 Close(connfd);
                 connfd = -1;
             } else {
-
                 // Update Partial Cache entry
-                updateARPCache(destIPAddr, NULL, 0, 0, connfd, TRUE);
+                updateARPCache(destIPAddr, NULL, ifindex, hatype, connfd, TRUE);
 
+                printf("ARP Cache entry Absent, sending ARP Request on Eth0 iface\n");
                 // ARP entry absent, send an ARP request on Eth0 interface
                 EthernetFrame requestPacket;
                 fillARPRequestPacket(&requestPacket, addrPairs[0].hwaddr,
@@ -320,7 +337,7 @@ int main() {
     fd_set fdSet;
 
     hostNode = getHostVmNodeNo();
-    getIPByVmNode(hostIP, hostNode);
+    getIPStrByVmNode(hostIP, hostNode);
     printf("ARP running on VM%d (%s)\n", hostNode, hostIP);
 
     totalPairs = getEth0IfaceAddrPairs(eth0AddrPairs);

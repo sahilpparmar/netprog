@@ -12,7 +12,7 @@ int getVmNodeByIP(char *ip) {
     return node;
 }
 
-char* getIPByVmNode(char *ip, int node) {
+char* getIPStrByVmNode(char *ip, int node) {
     struct hostent *hostInfo = NULL;
     char hostName[100];
 
@@ -23,6 +23,16 @@ char* getIPByVmNode(char *ip, int node) {
         return ip;
     else
         return NULL;
+}
+
+IA getIPAddrByVmNode(int node) {
+    char ipStr[100];
+    IA ipInfo = {0};
+
+    if (getIPStrByVmNode(ipStr, node)) {
+        inet_pton(AF_INET, ipStr, &ipInfo);
+    }
+    return ipInfo;
 }
 
 int getHostVmNodeNo() {
@@ -58,5 +68,18 @@ bool isSameIPAddr(IA ip1, IA ip2) {
     if (ip1.s_addr == ip2.s_addr)
         return TRUE;
     return FALSE;
+}
+
+char* ethAddrNtoP(char *nMAC) {
+    static char pMAC[25];
+    char buf[10];
+    int i;
+
+    pMAC[0] = '\0';
+    for (i = 0; i < IF_HADDR; i++) {
+        sprintf(buf, "%.2x%s", nMAC[i] & 0xff , i == 5 ? "" : ":");
+        strcat(pMAC, buf);
+    }
+    return pMAC;
 }
 

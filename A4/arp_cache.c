@@ -3,6 +3,26 @@
 static ARPCache arpCache[100];
 static int cacheEntries = 0;
 
+static void printARPCache() {
+    int i;
+
+    printf("============================================================================\n");
+    printf("|       IP Addr      |         MAC Addr        | IfIndex | HAType | Connfd |\n");
+    printf("============================================================================\n");
+    for (i = 0; i < cacheEntries; i++) {
+        if (arpCache[i].isValid) {
+            printf("| %18x | %23s | %7d | %6d | %6d |\n",
+                arpCache[i].ipAddr.s_addr,
+                ethAddrNtoP(arpCache[i].hwAddr),
+                arpCache[i].ifindex,
+                arpCache[i].hatype,
+                arpCache[i].connfd);
+        }
+    }
+    printf("============================================================================\n");
+
+}
+
 ARPCache* searchARPCache(IA ipAddr) {
     int i;
     for (i = 0; i < cacheEntries; i++) {
@@ -17,6 +37,9 @@ void invalidateCache(IA ipAddr) {
     ARPCache *entry = searchARPCache(ipAddr);
     assert(entry != NULL && "Invalid cache entry to invalidate");
     entry->isValid = FALSE;
+
+    printf("Invalidating Cache Entry with IP %x\n", ipAddr.s_addr);
+    printARPCache();
 }
 
 bool updateARPCache(IA ipAddr, char *hwAddr, int ifindex, uint8_t hatype,
@@ -51,8 +74,13 @@ bool updateARPCache(IA ipAddr, char *hwAddr, int ifindex, uint8_t hatype,
         if (updateInd == cacheEntries) {
             cacheEntries++;
         }
+
+        printf("Updating Cache Entry with IP %x\n", ipAddr.s_addr);
+        printARPCache();
+
         return TRUE;
     }
 
     return FALSE;
 }
+

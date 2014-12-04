@@ -1,9 +1,6 @@
 #ifndef _ARP_H
 #define _ARP_H
 
-#include <sys/socket.h>
-#include <linux/if_packet.h>
-#include <linux/if_arp.h>
 #include "utils.h"
 
 #define PROTOCOL_NUMBER 0x5454
