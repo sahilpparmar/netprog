@@ -4,6 +4,9 @@
 #include "utils.h"
 
 #define MAXHOPS 100
+#define IPPROTO_TOUR 154 // Between 143-252
+#define UNIQ_ID 101
+#define TTL_OUT 1
 
 /*
     ########################### TOUR Message format ######################
@@ -17,6 +20,6 @@ typedef struct {
     uint16_t multicastPort;
     uint16_t curIndex;
     IP tourList[MAXHOPS];
-} TourPayload;
+} TourPayload; //TODO include iphdr
 
 #endif /* !_TOUR_H */

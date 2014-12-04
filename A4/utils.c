@@ -1,5 +1,5 @@
 #include "utils.h"
-#include "unp.h"
+
 int getVmNodeByIP(char *ip) {
     struct hostent *hostInfo = NULL;
     struct in_addr ipInfo;
@@ -42,7 +42,7 @@ static char* getParam(FILE *fp, char *ptr, int n) {
     if (fgets(line, n, fp) == NULL || strlen(line) == 0) {
         return NULL;
     }
-    
+
     if (sscanf(line, "%s", ptr) > 0)
         return ptr;
     return NULL;
@@ -60,10 +60,42 @@ int getIntParamValue(FILE *inp_file) {
     int paramIVal;
 
     if (getParam(inp_file, paramStr, PARAM_SIZE) == NULL ||
-        ((paramIVal = atoi(paramStr)) == 0)
-    ) {
+            ((paramIVal = atoi(paramStr)) == 0)
+       ) {
         err_quit("Invalid parameter\n");
     }
     return paramIVal;
+}
+char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp) {
+
+    if (getcwd(fullPath, size) == NULL) {
+        err_msg("Unable to get pwd via getcwd()");
+    }
+
+    strcat(fullPath, fileName);
+
+    if (isTemp) {
+        if (mkstemp(fullPath) == -1) {
+            err_msg("Unable to get temp file via mkstemp()");
+        }
+    }
+
+    return fullPath;
+}
+
+int createAndBindUnixSocket(char *filePath) {
+    struct sockaddr_un sockAddr;
+    int sockfd;
+
+    sockfd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
+
+    bzero(&sockAddr, sizeof(sockAddr));
+    sockAddr.sun_family = AF_LOCAL;
+    strcpy(sockAddr.sun_path, filePath);
+
+    unlink(filePath);
+    Bind(sockfd, (SA*) &sockAddr, sizeof(sockAddr));
+
+    return sockfd;
 }
 
