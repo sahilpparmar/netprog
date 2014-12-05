@@ -6,8 +6,9 @@ static IA HostIP;
 static IA MulticastIP;
 static uint16_t MulticastPort;
 struct sockaddr_in GroupSock;
-int RTRouteSD, MulticastRecvSD, MulticastSendSD, PingReplySD;
+int RTRouteSD, MulticastSD, PingReplySD;
 bool joinedMulticast = FALSE;
+bool haveSentMyMSG = FALSE; 
 
 static void getMulticastInfo() {
     MulticastIP   = getIPAddrByIPStr(MULTICAST_IP);
@@ -43,11 +44,12 @@ static char* curTimeStr() {
 }
 
 static void createSockets() {
-    int hdrincl=1;
+    int hdrincl = 1;
+    int yes = 1;
 
     RTRouteSD       = socket(AF_INET, SOCK_RAW, IPPROTO_TOUR);
-    MulticastRecvSD = socket(AF_INET, SOCK_DGRAM, 0);
-    MulticastSendSD = socket(AF_INET, SOCK_DGRAM, 0);
+    MulticastSD     = socket(AF_INET, SOCK_DGRAM, 0);
+//    MulticastSendSD = socket(AF_INET, SOCK_DGRAM, 0);
     PingReplySD     = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
     if (RTRouteSD < 0)
@@ -58,10 +60,16 @@ static void createSockets() {
     if (setsockopt(RTRouteSD, IPPROTO_IP, IP_HDRINCL, &hdrincl, sizeof(hdrincl)) < 0)
         err_quit("Error in setting Sock option for RT Socket\n");
 
-    if (MulticastRecvSD < 0 || MulticastSendSD < 0)
+    if (MulticastSD < 0)
         err_quit("Opening Multicast datagram socket error");
     else
         printf("Opening Multicast datagram socket....OK.\n");
+
+    /* allow multiple sockets to use the same PORT number */
+    if (setsockopt(MulticastSD,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes)) < 0) {
+       perror("Reusing ADDR failed");
+       exit(1);
+       }
 
     if (PingReplySD < 0)
         err_quit("Opening Ping Reply socket error");
@@ -100,31 +108,51 @@ static bool isLastTourNode(IPPacket *packet, int nbytes) {
     return FALSE;
 }
 
-/*
+
 static void setMultiCast() {
 
-    if(joinedMulticast == TRUE)
+    if(joinedMulticast == TRUE) // Already listening on the Listening Socket
         return;
 
     else 
     {
         const int reuse = 1;
-        struct ip_mreq group;
-        char interface[] = "eth0";
+        struct group_req group;
+        char interface[] = "ether0";
+        struct sockaddr_in saddr;
+        struct ip_mreq mreq;
 
-        Setsockopt(MulticastRecvSD, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+        unsigned char ttl = 1;
+        unsigned char one = 1;
+        // set content of struct saddr and imreq to zero
+        memset(&saddr, 0, sizeof(struct sockaddr_in));
+        memset(&mreq, 0, sizeof(struct ip_mreq));
 
-        memset((char *) &GroupSock, 0, sizeof(GroupSock));
-        GroupSock.sin_family = AF_INET;
-        GroupSock.sin_port = htons(MulticastPort);  
-        group.imr_multiaddr.s_addr = inet_addr(MulticastIP);
+        saddr.sin_family = AF_INET;
+        saddr.sin_port = htons(IPPROTO_TOUR);
+        saddr.sin_addr.s_addr = htonl(INADDR_ANY); // bind socket to any interface
+        Bind(MulticastSD, (struct sockaddr *)&saddr, sizeof(saddr));
 
-        Bind(MulticastRecvSD, (SA *)&GroupSock, sizeof(GroupSock));
-        Mcast_join(MulticastRecvSD,(SA*) &GroupSock, sizeof(GroupSock), interface, 0);// select the eth0 interface
+        setsockopt(MulticastSD, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
+                sizeof(unsigned char));
+
+        // send multicast traffic to myself too
+        setsockopt(MulticastSD, IPPROTO_IP, IP_MULTICAST_LOOP,
+                &one, sizeof(unsigned char));
+
+        /* use setsockopt() to request that the kernel join a multicast group */
+        mreq.imr_multiaddr = MulticastIP;
+        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+
+        if (setsockopt(MulticastSD, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+            perror("setsockopt");
+            exit(1);
+        }
+
         joinedMulticast = TRUE;
     }
 
-}*/   
+}   
 
 static printIPPacket(IPPacket *packet, int nbytes) {
     struct ip *iphdr = &packet->iphead;
@@ -245,6 +273,88 @@ static int sendPingRequests(bool *pingStatus, int specific) {
     }
 }
 
+static void sendEndMulticast() {
+    char msgBuf[MAX_BUF];
+    struct sockaddr_in addr;
+
+    /* set up destination address */
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr = MulticastIP;
+    addr.sin_port = htons(MulticastPort);
+
+    sprintf(msgBuf, " <<<<< This is node VM%d . Tour has ended .    \
+            Group members please identify yourselves. >>>>>\n",     
+            getHostVmNodeNo());
+   
+    if (sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, 
+                (struct sockaddr *) &addr, sizeof(addr)) < 0){
+        perror("sendto");
+        exit(1);
+    }
+}
+
+static void handleMulticast() {
+    char msgBuf[MAX_BUF];
+    fd_set fdSet, readFdSet;
+    struct timeval timeout;
+    int maxfd;
+    uint32_t nbytes;
+
+
+    if ((nbytes = recvfrom(MulticastSD, msgBuf, 
+                    MAX_BUF, 0, NULL, NULL)) < 0) {
+        perror("recvfrom");
+        exit(1);
+    }
+
+    printf("%s", msgBuf);
+
+    if (haveSentMyMSG) {
+        struct sockaddr_in addr;
+        /* set up destination address */
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr = MulticastIP;
+        addr.sin_port = htons(MulticastPort);
+
+        sprintf(msgBuf, "<<<<< Node vm%d . I am a member of the group.  >>>>>\n",getHostVmNodeNo());
+        if (sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, 
+                    (struct sockaddr *) &addr, sizeof(addr)) < 0){
+            perror("sendto");
+            exit(1);
+        }
+        haveSentMyMSG = TRUE;
+    }
+
+    FD_ZERO(&fdSet);
+    FD_SET(MulticastSD, &fdSet);
+    while (1) {
+        printf("\n");
+        readFdSet = fdSet;
+        timeout.tv_sec  = READ_TIMEOUT;
+        timeout.tv_usec = 0;
+
+        maxfd = MulticastSD + 1;
+
+        nbytes = Select(maxfd, &readFdSet, NULL, NULL, &timeout);
+
+        // Multicast Timeout
+        if (nbytes == 0) {
+            printf("Exiting \n");
+        }
+        // Received IP Packet on tour rt socket
+        else if (FD_ISSET(MulticastSD, &readFdSet)) {
+            if ((nbytes = recvfrom(MulticastSD, msgBuf, 
+                            MAX_BUF, 0, NULL, NULL)) < 0) {
+                perror("recvfrom");
+                exit(1);
+            }
+
+            printf("%s", msgBuf);
+        }
+    }
+}
 static void readAllSockets() {
     fd_set fdSet, readFdSet;
     struct timeval timeout;
@@ -254,17 +364,23 @@ static void readAllSockets() {
 
     FD_ZERO(&fdSet);
     FD_SET(RTRouteSD, &fdSet);
-    FD_SET(MulticastRecvSD, &fdSet);
     FD_SET(PingReplySD, &fdSet);
 
-    maxfd = max(RTRouteSD, max(MulticastRecvSD, PingReplySD)) + 1;
     endOfTour = FALSE;
     pingCountDown = PING_COUNTDOWN;
+
     while (1) {
         printf("\n");
         readFdSet = fdSet;
         timeout.tv_sec  = PING_TIMEOUT;
         timeout.tv_usec = 0;
+        
+        maxfd = max(RTRouteSD, PingReplySD) + 1;
+
+        if(joinedMulticast) {
+            FD_SET(MulticastSD, &fdSet);
+            maxfd = max(RTRouteSD, max(MulticastSD, PingReplySD)) + 1;
+        }
 
         n = Select(maxfd, &readFdSet, NULL, NULL, isPingEnable(pingStatus) ? &timeout : NULL);
 
@@ -280,6 +396,7 @@ static void readAllSockets() {
                 endOfTour = FALSE;
                 pingCountDown = PING_COUNTDOWN;
                 // TODO: Send Multicast Msg to All
+                sendEndMulticast();
             } else {
                 sendPingRequests(pingStatus, -1);
             }
@@ -312,8 +429,12 @@ static void readAllSockets() {
         }
 
         // Received Multicast UDP message
-        else if (FD_ISSET(MulticastRecvSD, &readFdSet)) {
-            // TODO: Receive Multicast msg
+        else if (FD_ISSET(MulticastSD, &readFdSet)) {
+            // Handle message
+            handleMulticast();            
+            disablePingStatus(pingStatus);
+            endOfTour = FALSE;
+            pingCountDown = PING_COUNTDOWN;
 
         }
     }
@@ -366,7 +487,7 @@ int main(int argc, char* argv[]) {
         IPList[0] = HostIP;
 
         getMulticastInfo();
-        //setMultiCast();
+        setMultiCast();
         startTour(IPList, argc);
     }
     readAllSockets();

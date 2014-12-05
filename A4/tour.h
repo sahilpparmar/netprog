@@ -4,15 +4,17 @@
 #include "utils.h"
 #include <netinet/ip.h>
 
-#define MAXHOPS      100    // hops
-#define IPPROTO_TOUR 154    // Between 143-252
-#define UNIQ_ID      0x6565
-#define TTL_OUT      1
-#define AREQ_TIMEOUT 5      // sec
-#define PING_TIMEOUT 1      // sec
+#define MAXHOPS         100    // hops
+#define IPPROTO_TOUR    154    // Between 143-252
+#define UNIQ_ID         0x6565
+#define TTL_OUT         1
+#define AREQ_TIMEOUT    5      // sec
+#define PING_TIMEOUT    1      // sec
 #define PING_COUNTDOWN  5
 #define MULTICAST_IP    "226.1.2.3"
 #define MULTICAST_PORT  0x8787
+#define MAX_BUF         1000
+#define READ_TIMEOUT    5
 
 /*
     ########################### TOUR Message format ######################
