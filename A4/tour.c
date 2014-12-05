@@ -356,6 +356,7 @@ static void handleMulticast() {
         }
     }
 }
+
 static void readAllSockets() {
     fd_set fdSet, readFdSet;
     struct timeval timeout;
@@ -376,14 +377,14 @@ static void readAllSockets() {
         timeout.tv_sec  = PING_TIMEOUT;
         timeout.tv_usec = 0;
         
-        maxfd = max(RTRouteSD, PingReplySD) + 1;
+        maxfd = max(RTRouteSD, PingReplySD);
 
-        if(joinedMulticast) {
-            FD_SET(MulticastSD, &fdSet);
-            maxfd = max(RTRouteSD, max(MulticastSD, PingReplySD)) + 1;
+        if (joinedMulticast) {
+            FD_SET(MulticastSD, &readFdSet);
+            maxfd = max(maxfd, MulticastSD);
         }
 
-        n = Select(maxfd, &readFdSet, NULL, NULL, isPingEnable(pingStatus) ? &timeout : NULL);
+        n = Select(maxfd + 1, &readFdSet, NULL, NULL, isPingEnable(pingStatus) ? &timeout : NULL);
 
         // PING Timeout
         if (n == 0) {
