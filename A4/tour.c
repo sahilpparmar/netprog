@@ -109,7 +109,7 @@ static bool isLastTourNode(IPPacket *packet, int nbytes) {
 }
 
 
-static void setMultiCast() {
+static void setMultiCast(IA MulIP, uint16_t MulPort) {
 
     if(joinedMulticast == TRUE) // Already listening on the Listening Socket
         return;
@@ -124,12 +124,13 @@ static void setMultiCast() {
 
         unsigned char ttl = 1;
         unsigned char one = 1;
+
         // set content of struct saddr and imreq to zero
         memset(&saddr, 0, sizeof(struct sockaddr_in));
         memset(&mreq, 0, sizeof(struct ip_mreq));
 
         saddr.sin_family = AF_INET;
-        saddr.sin_port = htons(IPPROTO_TOUR);
+        saddr.sin_port = htons(MulPort);
         saddr.sin_addr.s_addr = htonl(INADDR_ANY); // bind socket to any interface
         Bind(MulticastSD, (struct sockaddr *)&saddr, sizeof(saddr));
 
@@ -141,7 +142,7 @@ static void setMultiCast() {
                 &one, sizeof(unsigned char));
 
         /* use setsockopt() to request that the kernel join a multicast group */
-        mreq.imr_multiaddr = MulticastIP;
+        mreq.imr_multiaddr = MulIP;
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
         if (setsockopt(MulticastSD, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
@@ -420,6 +421,8 @@ static void readAllSockets() {
                 pingStatus[sourceNode] = TRUE;
                 sendPingRequests(pingStatus, sourceNode);
             }
+            
+            setMultiCast(packet.payload.multicastIP, packet.payload.multicastPort);
         }
 
         // Received PING Reply IP Packet on pg socket
@@ -485,9 +488,8 @@ int main(int argc, char* argv[]) {
             IPList[i] = getIPAddrByVmNode(nodeNo);
         }
         IPList[0] = HostIP;
-
         getMulticastInfo();
-        setMultiCast();
+        setMultiCast(MulticastIP, MulticastPort);
         startTour(IPList, argc);
     }
     readAllSockets();
