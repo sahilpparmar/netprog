@@ -9,12 +9,10 @@
 #include "unp.h"
 #include "hw_addrs.h"
 
-#define CLIENT_IN "tour.in"
 #define ARP_FILE    "/tmp-arp"
-#define TOUR_FILE   "/tmp-tour-xxxxxx"
+#define IPLEN       30
+#define MAX_NODES   10
 
-#define IPLEN 30
-#define PARAM_SIZE 10
 typedef char IP[IPLEN];
 typedef struct in_addr IA;
 
@@ -23,7 +21,7 @@ typedef enum {
     FALSE = 0
 } bool;
 
-char* getVmNameByIPAddr(IA ipAddr);
+int getVmNodeByIPAddr(IA ipAddr);
 char* getIPStrByVmNode(char *ip, int node);
 char* getIPStrByIPAddr(IA ipAddr);
 IA getIPAddrByIPStr(char *ipStr);

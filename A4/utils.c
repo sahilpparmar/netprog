@@ -1,25 +1,12 @@
 #include "utils.h"
 
-IA getIPAddrByIPStr(char *ipStr) {
-    IA ipAddr = {0};
-    inet_pton(AF_INET, ipStr, &ipAddr);
-    return ipAddr;
-}
-
-char* getIPStrByIPAddr(IA ipAddr) {
-    struct hostent *hostInfo = NULL;
-    static char ipStr[INET_ADDRSTRLEN];
-
-    if (inet_ntop(AF_INET, (void*) &ipAddr, ipStr, INET_ADDRSTRLEN))
-        return ipStr;
-    else
-        return NULL;
-}
-
-char* getVmNameByIPAddr(IA ipAddr) {
+int getVmNodeByIPAddr(IA ipAddr) {
     struct hostent *hostInfo;
+    int nodeno = 0;
+
     hostInfo = gethostbyaddr(&ipAddr, sizeof(ipAddr), AF_INET);
-    return hostInfo->h_name;
+    sscanf(hostInfo->h_name, "vm%d", &nodeno);
+    return nodeno;
 }
 
 char* getIPStrByVmNode(char *ip, int node) {
@@ -33,6 +20,22 @@ char* getIPStrByVmNode(char *ip, int node) {
         return ip;
     else
         return NULL;
+}
+
+char* getIPStrByIPAddr(IA ipAddr) {
+    struct hostent *hostInfo = NULL;
+    static char ipStr[INET_ADDRSTRLEN];
+
+    if (inet_ntop(AF_INET, (void*) &ipAddr, ipStr, INET_ADDRSTRLEN))
+        return ipStr;
+    else
+        return NULL;
+}
+
+IA getIPAddrByIPStr(char *ipStr) {
+    IA ipAddr = {0};
+    inet_pton(AF_INET, ipStr, &ipAddr);
+    return ipAddr;
 }
 
 IA getIPAddrByVmNode(int node) {
@@ -56,36 +59,7 @@ int getHostVmNodeNo() {
     }
     return nodeNo;
 }
-static char* getParam(FILE *fp, char *ptr, int n) {
-    char line[MAXLINE];
 
-    if (fgets(line, n, fp) == NULL || strlen(line) == 0) {
-        return NULL;
-    }
-
-    if (sscanf(line, "%s", ptr) > 0)
-        return ptr;
-    return NULL;
-}
-
-char* getStringParamValue(FILE *inp_file, char *paramVal) {
-    if (getParam(inp_file, paramVal, PARAM_SIZE) == NULL) {
-        err_quit("Invalid parameter\n");
-    }
-    return paramVal;
-}
-
-int getIntParamValue(FILE *inp_file) {
-    char paramStr[PARAM_SIZE];
-    int paramIVal;
-
-    if (getParam(inp_file, paramStr, PARAM_SIZE) == NULL ||
-            ((paramIVal = atoi(paramStr)) == 0)
-       ) {
-        err_quit("Invalid parameter\n");
-    }
-    return paramIVal;
-}
 char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp) {
 
     if (getcwd(fullPath, size) == NULL) {

@@ -215,24 +215,106 @@ static void startTour(IA *List, int tourCount) {
     forwardPacket(&packet, tourCount);
 }
 
-static void ListenOnSockets() {
-    while (1) {
-        // TODO: need select
-        if (joinedMulticast) {
+static bool isPingEnable(bool *pingStatus) {
+    int i;
+    for (i = 1; i <= MAX_NODES; i++) {
+        if (pingStatus[i])
+            return TRUE;
+    }
+    return FALSE;
+}
 
-        } else {
-            // Listen on all except the Multicast Socket
+static void disablePingStatus(bool *pingStatus) {
+    int i;
+    for (i = 1; i <= MAX_NODES; i++) {
+        pingStatus[i] = FALSE;
+    }
+}
+
+static int sendPingRequests(bool *pingStatus, int specific) {
+    // TODO: Get MAC for source IP via areq and send a PING REQ
+    if (specific != -1) {
+        assert(pingStatus[specific] && "Ping Status should be enable");
+        printf("Sending a PING packet to VM%d\n", specific);
+    } else {
+        int i;
+        for (i = 1; i <= MAX_NODES; i++) {
+            if (pingStatus[i])
+                printf("Sending a PING packet to VM%d\n", i);
+        }
+    }
+}
+
+static void readAllSockets() {
+    fd_set fdSet, readFdSet;
+    struct timeval timeout;
+    bool pingStatus[MAX_NODES+1] = {FALSE};
+    bool endOfTour;
+    int maxfd, pingCountDown, n;
+
+    FD_ZERO(&fdSet);
+    FD_SET(RTRouteSD, &fdSet);
+    FD_SET(MulticastRecvSD, &fdSet);
+    FD_SET(PingReplySD, &fdSet);
+
+    maxfd = max(RTRouteSD, max(MulticastRecvSD, PingReplySD)) + 1;
+    endOfTour = FALSE;
+    pingCountDown = PING_COUNTDOWN;
+    while (1) {
+        printf("\n");
+        readFdSet = fdSet;
+        timeout.tv_sec  = PING_TIMEOUT;
+        timeout.tv_usec = 0;
+
+        n = Select(maxfd, &readFdSet, NULL, NULL, isPingEnable(pingStatus) ? &timeout : NULL);
+
+        // PING Timeout
+        if (n == 0) {
+            assert(isPingEnable(pingStatus) && "Ping Status should be enable");
+            if (endOfTour) {
+                pingCountDown--;
+            }
+            if (pingCountDown == 0) {
+                printf("<<<<< End of Tour >>>>>\n");
+                disablePingStatus(pingStatus);
+                endOfTour = FALSE;
+                pingCountDown = PING_COUNTDOWN;
+                // TODO: Send Multicast Msg to All
+            } else {
+                sendPingRequests(pingStatus, -1);
+            }
+        }
+
+        // Received IP Packet on tour rt socket
+        else if (FD_ISSET(RTRouteSD, &readFdSet)) {
             IPPacket packet;
             int nbytes = recvIPPacket(RTRouteSD, &packet);
-            
-            printf("[%s] Received Source Routing Packet from %s\n", curTimeStr(),
-                    getVmNameByIPAddr(packet.iphead.ip_src));
+            int sourceNode = getVmNodeByIPAddr(packet.iphead.ip_src);
+
+            printf("[%s] Received Source Routing Packet from VM%d\n", curTimeStr(), sourceNode);
 
             if (isLastTourNode(&packet, nbytes)) {
-                printf("End of Tour\n");
+                endOfTour = TRUE;
             } else {
                 forwardPacket(&packet, getTourNodeCntByPackSize(nbytes));
             }
+
+            if (!pingStatus[sourceNode]) {
+                pingStatus[sourceNode] = TRUE;
+                sendPingRequests(pingStatus, sourceNode);
+            }
+        }
+
+        // Received PING Reply IP Packet on pg socket
+        else if (FD_ISSET(PingReplySD, &readFdSet)) {
+            // TODO: Receive Ping Reply
+
+        }
+
+        // Received Multicast UDP message
+        else if (FD_ISSET(MulticastRecvSD, &readFdSet)) {
+            // TODO: Receive Multicast msg
+
         }
     }
 }
@@ -270,7 +352,6 @@ int main(int argc, char* argv[]) {
 
     if (argc == 1) {
         printf("No Tour specified. Running in Listening Mode ==>\n");
-        ListenOnSockets();
 
     } else {
         for (i = 1; i < argc; i++) {
@@ -287,7 +368,7 @@ int main(int argc, char* argv[]) {
         getMulticastInfo();
         //setMultiCast();
         startTour(IPList, argc);
-        ListenOnSockets();
     }
+    readAllSockets();
 }
 
