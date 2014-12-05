@@ -2,12 +2,15 @@
 #define _TOUR_H
 
 #include "utils.h"
+#include <netinet/ip.h>
 
-#define MAXHOPS         100 // hops
-#define IPPROTO_TOUR 154 // Between 143-252
-#define UNIQ_ID 101
-#define TTL_OUT 1
-#define AREQ_TIMEOUT    5   // sec
+#define MAXHOPS      100    // hops
+#define IPPROTO_TOUR 154    // Between 143-252
+#define UNIQ_ID      0x6565
+#define TTL_OUT      1
+#define AREQ_TIMEOUT 5      // sec
+#define MULTICAST_IP    "226.1.2.3"
+#define MULTICAST_PORT  0x8787
 
 /*
     ########################### TOUR Message format ######################
@@ -17,11 +20,16 @@
 */
 
 typedef struct {
-    IP multicastIP;
+    IA multicastIP;
     uint16_t multicastPort;
     uint16_t curIndex;
-    IP tourList[MAXHOPS];
-} TourPayload; //TODO include iphdr
+    IA tourList[MAXHOPS];
+} TourPayload;
+
+typedef struct {
+    struct ip iphead;
+    TourPayload payload;
+} IPPacket;
 
 typedef struct {
     int      sll_ifindex;    /* Interface number */

@@ -1,15 +1,25 @@
 #include "utils.h"
 
-int getVmNodeByIPStr(char *ip) {
-    struct hostent *hostInfo = NULL;
-    IA ipAddr;
-    int node = 0;
+IA getIPAddrByIPStr(char *ipStr) {
+    IA ipAddr = {0};
+    inet_pton(AF_INET, ipStr, &ipAddr);
+    return ipAddr;
+}
 
-    if (inet_pton(AF_INET, ip, &ipAddr) > 0) {
-        hostInfo = gethostbyaddr(&ipAddr, sizeof(ipAddr), AF_INET);
-        sscanf(hostInfo->h_name, "vm%d", &node);
-    }
-    return node;
+char* getIPStrByIPAddr(IA ipAddr) {
+    struct hostent *hostInfo = NULL;
+    static char ipStr[INET_ADDRSTRLEN];
+
+    if (inet_ntop(AF_INET, (void*) &ipAddr, ipStr, INET_ADDRSTRLEN))
+        return ipStr;
+    else
+        return NULL;
+}
+
+char* getVmNameByIPAddr(IA ipAddr) {
+    struct hostent *hostInfo;
+    hostInfo = gethostbyaddr(&ipAddr, sizeof(ipAddr), AF_INET);
+    return hostInfo->h_name;
 }
 
 char* getIPStrByVmNode(char *ip, int node) {
@@ -21,16 +31,6 @@ char* getIPStrByVmNode(char *ip, int node) {
 
     if (hostInfo && inet_ntop(AF_INET, hostInfo->h_addr, ip, INET_ADDRSTRLEN))
         return ip;
-    else
-        return NULL;
-}
-
-char* getIPStrByIPAddr(IA ipAddr) {
-    struct hostent *hostInfo = NULL;
-    static char ipStr[INET_ADDRSTRLEN];
-
-    if (inet_ntop(AF_INET, (void*) &ipAddr, ipStr, INET_ADDRSTRLEN))
-        return ipStr;
     else
         return NULL;
 }

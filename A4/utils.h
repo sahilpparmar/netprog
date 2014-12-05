@@ -23,9 +23,10 @@ typedef enum {
     FALSE = 0
 } bool;
 
-int getVmNodeByIPStr(char *ip);
+char* getVmNameByIPAddr(IA ipAddr);
 char* getIPStrByVmNode(char *ip, int node);
 char* getIPStrByIPAddr(IA ipAddr);
+IA getIPAddrByIPStr(char *ipStr);
 IA getIPAddrByVmNode(int node);
 int getHostVmNodeNo();
 char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp);

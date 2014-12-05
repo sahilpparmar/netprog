@@ -1,88 +1,103 @@
 #include "tour.h"
-#include <netinet/ip.h>
 
-static uint32_t HostIP;
-static IP MulticastIP;
+#define DEBUG 0
+
+static IA HostIP;
+static IA MulticastIP;
 static uint16_t MulticastPort;
 struct sockaddr_in GroupSock;
 int RTRouteSD, MulticastRecvSD, MulticastSendSD, PingReplySD;
 bool joinedMulticast = FALSE;
 
-static void parseClientParams() {
-    strncpy (MulticastIP, "226.1.2.3", sizeof("226.1.2.3"));
-    MulticastPort = 5454;
+static void getMulticastInfo() {
+    MulticastIP   = getIPAddrByIPStr(MULTICAST_IP);
+    MulticastPort = MULTICAST_PORT;
 }
 
-unsigned short csum(unsigned short *buf, int nwords)
-{       //
-        unsigned long sum;
-        for(sum=0; nwords>0; nwords--)
-                sum += *buf++;
-        sum = (sum >> 16) + (sum &0xffff);
-        sum += (sum >> 16);
-        return (unsigned short)(~sum);
+static uint16_t csum(uint16_t *addr, int len) {
+    long sum = 0;
+
+    while (len > 1) {
+        sum += *(addr++);
+        len -= 2;
+    }
+
+    if (len > 0)
+        sum += *addr;
+
+    while (sum >> 16)
+        sum = ((sum & 0xffff) + (sum >> 16));
+
+    sum = ~sum;
+
+    return ((uint16_t) sum);
 }
+
+static char* curTimeStr() {
+    static char timeStr[100];
+    time_t timestamp = time(NULL);
+
+    strcpy(timeStr, asctime(localtime((const time_t *) &timestamp)));
+    timeStr[strlen(timeStr)-1] = '\0';
+    return timeStr;
+}
+
 static void createSockets() {
-    /* Create a datagram socket on which to receive. */
     int hdrincl=1;
 
-    RTRouteSD   = socket(AF_INET, SOCK_RAW, IPPROTO_TOUR);
+    RTRouteSD       = socket(AF_INET, SOCK_RAW, IPPROTO_TOUR);
     MulticastRecvSD = socket(AF_INET, SOCK_DGRAM, 0);
     MulticastSendSD = socket(AF_INET, SOCK_DGRAM, 0);
-    PingReplySD = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    PingReplySD     = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
-    if(RTRouteSD < 0)
-    {
-        perror("Opening RT Route socket error");
-        exit(1);
-    }
+    if (RTRouteSD < 0)
+        err_quit("Opening RT Route socket error");
     else
         printf("Opening RT Route socket....OK.\n");
 
-    if (setsockopt(RTRouteSD, IPPROTO_IP, IP_HDRINCL, &hdrincl, sizeof(hdrincl)) < 0) {
-        perror("Error in setting Sock option for RT Socket\n");
-    }
+    if (setsockopt(RTRouteSD, IPPROTO_IP, IP_HDRINCL, &hdrincl, sizeof(hdrincl)) < 0)
+        err_quit("Error in setting Sock option for RT Socket\n");
 
-    if(MulticastRecvSD < 0 || MulticastSendSD < 0)
-    {
-        perror("Opening Multicast datagram socket error");
-        exit(1);
-    }
+    if (MulticastRecvSD < 0 || MulticastSendSD < 0)
+        err_quit("Opening Multicast datagram socket error");
     else
         printf("Opening Multicast datagram socket....OK.\n");
 
-    if(PingReplySD < 0)
-    {
-        perror("Opening Ping Reply socket error");
-        exit(1);
-    }
+    if (PingReplySD < 0)
+        err_quit("Opening Ping Reply socket error");
     else
         printf("Opening Ping Reply socket....OK.\n");
 }
-void generateDataPayload(TourPayload *data, uint32_t *IPList, int numNodes) {
-    memcpy(data->multicastIP, MulticastIP, sizeof(MulticastIP));
+
+void generateDataPayload(TourPayload *data, IA *IPList, int numNodes) {
+    data->multicastIP   = MulticastIP;
     data->multicastPort = MulticastPort;
     data->curIndex = 0;
-    memcpy(data->tourList, IPList, (sizeof(IP) * numNodes));
-    return;
+    memcpy(data->tourList, IPList, (sizeof(IA) * numNodes));
 }
-void incrementIndex(TourPayload *data) {
-    data->curIndex++;
-    return;
+
+static void incrementTourIndex(IPPacket *packet) {
+    packet->payload.curIndex++;
 }
-bool isLastTourNode(TourPayload *data, int payloadSize) {
-    int totalNodes;
-    totalNodes = (payloadSize - sizeof(IP) 
-        + (2*sizeof(uint16_t)))
-        /sizeof(IP); // MulicastIP + Port + curIndex
-    totalNodes--;
-    if(data->curIndex < totalNodes)
-        return FALSE;
-    else if(data->curIndex = totalNodes)
+
+static IA getCurTourDestIP(IPPacket *packet) {
+    return packet->payload.tourList[packet->payload.curIndex];
+}
+
+static int getTourNodeCntByPackSize(int nbytes) {
+    return MAXHOPS - ((sizeof(IPPacket) - nbytes) / sizeof(IA));
+}
+
+static bool isLastTourNode(IPPacket *packet, int nbytes) {
+
+    int totalNodes = getTourNodeCntByPackSize(nbytes);
+    int curInd = packet->payload.curIndex;
+
+    assert((curInd < totalNodes) && "Invalid curInd/totalNodes in tour packet");
+
+    if (curInd == (totalNodes - 1))
         return TRUE;
-    else
-        perror("Error in checking last node!\n");
-    return;
+    return FALSE;
 }
 
 /*
@@ -110,105 +125,116 @@ static void setMultiCast() {
     }
 
 }*/   
-static void prependHeader(uint32_t destIP, char *sendPacket, uint16_t userLen) {
-    struct ip *iphdr;
 
-    iphdr = (struct ip *) sendPacket;
+static printIPPacket(IPPacket *packet, int nbytes) {
+    struct ip *iphdr = &packet->iphead;
+    TourPayload *payload = &packet->payload;
 
-    bzero(sendPacket, sizeof(*iphdr));
-    iphdr->ip_hl = sizeof(struct ip) >> 2;
-    iphdr->ip_v = IPVERSION;
-    iphdr->ip_tos = 0;
-#if defined(linux) || defined(__OpenBSD__)
-    iphdr->ip_len = htons(userLen);	/* network byte order */
-#else
-    iphdr->ip_len = userLen;			/* host byte order */
-#endif
-    iphdr->ip_id = htons(UNIQ_ID);
-    iphdr->ip_off = htons(0);			/* frag offset, MF and DF flags */
-    iphdr->ip_ttl = TTL_OUT;
-    iphdr->ip_p = IPPROTO_TOUR;
+    printf("IP Header =>\n");
+    printf("Header Len: %d\t", iphdr->ip_hl);
+    printf("Version: %d\t", iphdr->ip_v);
+    printf("TOS: %d\n", iphdr->ip_tos);
+    printf("Total Len: %d\t", ntohs(iphdr->ip_len));
+    printf("Ident Num: %x\n", ntohs(iphdr->ip_id));
+    printf("Offset: %d\t", iphdr->ip_off);
+    printf("TTL: %d\t", iphdr->ip_ttl);
+    printf("Protocol Num: %d\n", iphdr->ip_p);
+    printf("Src IP: %s\t", getIPStrByIPAddr(iphdr->ip_src));
+    printf("Dst IP: %s\t", getIPStrByIPAddr(iphdr->ip_dst));
+    printf("Checksum: %x\n", ntohs(iphdr->ip_sum));
 
-    iphdr->ip_src.s_addr = HostIP;
-    iphdr->ip_dst.s_addr = destIP;
-    iphdr->ip_sum = csum((unsigned short *)sendPacket, userLen); //TODO 
-    return;
+    printf("Packet Payload =>\n");
+    printf("MCast IP: %s\t", getIPStrByIPAddr(payload->multicastIP));
+    printf("MCast Port: %d\n", payload->multicastPort);
+    printf("Total TourNodes: %d\t", getTourNodeCntByPackSize(nbytes));
+    printf("CurInd: %d\t", payload->curIndex);
+    printf("CurTourDest: %s\n", getIPStrByIPAddr(getCurTourDestIP(packet)));
 }
 
+static int recvIPPacket(int sockfd, IPPacket *packet) {
+    int nbytes;
+    nbytes = Recvfrom(RTRouteSD, packet, sizeof(IPPacket), 0, NULL, NULL);
+#if DEBUG
+    printf("Recevied IP Packet of len %d ==>\n", nbytes);
+    printIPPacket(packet, nbytes);
+#endif
+    return nbytes;
+}
 
+static void sendIPPacket(int sockfd, IPPacket *packet, SA *sockAddr, int salen, int nbytes) {
+#if DEBUG
+    printf("Sending IP Packet of len %d ==>\n", nbytes);
+    printIPPacket(packet, nbytes);
+#endif
+    Sendto(RTRouteSD, packet, nbytes, 0, sockAddr, salen);
+}
 
-static int forwardPacket(TourPayload *data, int max) {
+static void fillIPHeader(IPPacket *packet, IA destIP, uint16_t numBytes) {
+    struct ip *iphdr = (struct ip *) &packet->iphead;
 
-    char *sendPacket;
-    uint16_t bytesToWrite;
+    iphdr->ip_hl  = sizeof(struct ip) >> 2;
+    iphdr->ip_v   = IPVERSION;
+    iphdr->ip_tos = 0;
+    iphdr->ip_len = htons(numBytes);
+    iphdr->ip_id  = htons(UNIQ_ID);
+    iphdr->ip_off = 0;
+    iphdr->ip_ttl = TTL_OUT;
+    iphdr->ip_p   = IPPROTO_TOUR;
+    iphdr->ip_src = HostIP;
+    iphdr->ip_dst = destIP;
+    iphdr->ip_sum = htons(csum((uint16_t *)packet, numBytes));
+}
+
+static int forwardPacket(IPPacket *packet, int numNodes) {
     struct sockaddr_in tourSockAddr;
-    uint32_t destIP;
-    int headerLen = sizeof(struct ip);
-    TourPayload *payload;
+    IA destIP;
+    uint16_t bytesToWrite;
 
-    bytesToWrite = headerLen + (sizeof(IP) + 2 *sizeof(uint16_t)) + max * sizeof(IP);
-    sendPacket = malloc(bytesToWrite);
-    memcpy((sendPacket + headerLen), data, (bytesToWrite - headerLen));
-
-    payload = (TourPayload *) (sendPacket + headerLen);
-
-    incrementIndex(payload);
-    destIP = *(payload->tourList[payload->curIndex]);
+    incrementTourIndex(packet);
+    destIP = getCurTourDestIP(packet);
 
     bzero(&tourSockAddr, sizeof(tourSockAddr));
     tourSockAddr.sin_family = AF_INET;
-    tourSockAddr.sin_port = htons(IPPROTO_TOUR);
-    tourSockAddr.sin_addr.s_addr = destIP;
+    tourSockAddr.sin_addr = destIP;
 
-    prependHeader(destIP, sendPacket, bytesToWrite);
+    bytesToWrite = sizeof(IPPacket) - ((MAXHOPS - numNodes) * sizeof(IA));
+    fillIPHeader(packet, destIP, bytesToWrite);
 
-    Sendto(RTRouteSD, sendPacket, bytesToWrite, 0, (const struct sockaddr *) &tourSockAddr, sizeof(socklen_t));
-
-    free(sendPacket);
-    
+    sendIPPacket(RTRouteSD, packet, (SA*) &tourSockAddr, sizeof(tourSockAddr), bytesToWrite);
     return bytesToWrite;
-
 }
 
-static void startTour(uint32_t *List, int max) {
-    printf("Initializing Tour\n");
-    TourPayload data;
-    generateDataPayload(&data, List, max);
-    forwardPacket(&data, max);
+static void startTour(IA *List, int tourCount) {
+    IPPacket packet;
+    TourPayload *payload;
+
+    bzero(&packet, sizeof(packet));
+    printf("Initializing Tour ==>\n");
+
+    generateDataPayload(&packet.payload, List, tourCount);
+    forwardPacket(&packet, tourCount);
 }
-
-
 
 static void ListenOnSockets() {
-    if(joinedMulticast) {
+    while (1) {
+        // TODO: need select
+        if (joinedMulticast) {
 
+        } else {
+            // Listen on all except the Multicast Socket
+            IPPacket packet;
+            int nbytes = recvIPPacket(RTRouteSD, &packet);
+            
+            printf("[%s] Received Source Routing Packet from %s\n", curTimeStr(),
+                    getVmNameByIPAddr(packet.iphead.ip_src));
+
+            if (isLastTourNode(&packet, nbytes)) {
+                printf("End of Tour\n");
+            } else {
+                forwardPacket(&packet, getTourNodeCntByPackSize(nbytes));
+            }
+        }
     }
-    else // Listen on all except the Multicast Socket
-    {
-        char *Packet;
-        IP sourceIP;
-        uint32_t source, readBytes;
-        TourPayload *payload;
-
-
-        Packet = malloc(sizeof(struct ip)+ MAXHOPS *sizeof(TourPayload));
-        printf("Listening on all sockets!\n");
-        readBytes = Recvfrom(RTRouteSD, Packet, sizeof(struct ip) + 
-                MAXHOPS * sizeof(TourPayload), 0, NULL, NULL);
-        printf("Bytes read: %d", readBytes);
-        payload = (TourPayload *)(Packet +sizeof(struct ip));
-        source = *(payload->tourList[(payload->curIndex)-1]);
-        
-    
-        Inet_ntop(AF_INET, &source, sourceIP, sizeof(socklen_t));     
-        printf("Packet received from VM%d\n", getVmNodeByIP(sourceIP));
-    }
-}
-
-
-static void readIP() {
-
-
 }
 
 static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
@@ -218,7 +244,7 @@ static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
     bzero(&sockAddr, sizeof(sockAddr));
     sockAddr.sin_family = AF_INET;
     sockAddr.sin_addr   = s_ipaddr;
-    sockAddr.sin_port   = htons(0);
+    sockAddr.sin_port   = 0;
 
     bzero(&hwAddr, sizeof(hwAddr));
     hwAddr.sll_ifindex = 2;
@@ -233,36 +259,34 @@ static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
 
 int main(int argc, char* argv[]) {
 
-    uint32_t IPList[MAXHOPS] = {0};
+    IA IPList[MAXHOPS] = {0};
     int nodeNo = 0;
-    IP charIP;
     int i;
 
-    getIPByVmNode(charIP, getHostVmNodeNo());
-    Inet_pton(AF_INET, charIP, &HostIP);     
+    HostIP = getIPAddrByVmNode(getHostVmNodeNo());
 
-    printf("Tour module running on VM%d with IP:%s\n", getHostVmNodeNo(), charIP);
+    printf("Tour module running on VM%d (%s)\n", getHostVmNodeNo(), getIPStrByIPAddr(HostIP));
     createSockets();
 
     if (argc == 1) {
-        printf("No Tour specified\n");
-        createSockets();
-        printf("Running in Listening Mode\n");
+        printf("No Tour specified. Running in Listening Mode ==>\n");
         ListenOnSockets();
 
-    } 
-    else {
+    } else {
         for (i = 1; i < argc; i++) {
             nodeNo = atoi(argv[i]+2);
-            getIPByVmNode(charIP, nodeNo);
-            printf("%d : VM%d ---> %s\n",i, nodeNo, charIP);
-            Inet_pton(AF_INET, charIP, &IPList[i]);     
+#if DEBUG
+            IP charIP;
+            getIPStrByVmNode(charIP, nodeNo);
+            printf("%d : VM%d ---> %s\n", i, nodeNo, charIP);
+#endif
+            IPList[i] = getIPAddrByVmNode(nodeNo);
         }
         IPList[0] = HostIP;
 
-        parseClientParams();
-       // setMultiCast();
-        startTour(IPList, i);
+        getMulticastInfo();
+        //setMultiCast();
+        startTour(IPList, argc);
         ListenOnSockets();
     }
 }
