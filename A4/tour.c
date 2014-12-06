@@ -89,19 +89,21 @@ static void setMultiCast(IA MulIP, uint16_t MulPort) {
     else 
     {
         const int reuse = 1;
+        int status;
         struct group_req group;
         char interface[] = "ether0";
         struct sockaddr_in saddr;
-//        struct ip_mreq mreq;
+        struct ip_mreq imreq;
 
         unsigned char ttl = 1;
         unsigned char one = 1;
+
         MulticastIP = MulIP;
         MulticastPort = MulPort;
 
         // set content of struct saddr and imreq to zero
         memset(&saddr, 0, sizeof(struct sockaddr_in));
-//        memset(&mreq, 0, sizeof(struct ip_mreq));
+        memset(&imreq, 0, sizeof(struct ip_mreq));
 
         saddr.sin_family = AF_INET;
         saddr.sin_port = htons(MulPort);
@@ -117,7 +119,16 @@ static void setMultiCast(IA MulIP, uint16_t MulPort) {
 
         /* use setsockopt() to request that the kernel join a multicast group */
         saddr.sin_addr = MulIP; // bind socket to any interface
-        Mcast_join(MulticastSD, (const SA *)&saddr, sizeof(saddr), NULL, 0);
+
+        imreq.imr_multiaddr = MulticastIP;
+        imreq.imr_interface = HostIP; // use DEFAULT interface
+
+        // JOIN multicast group on default interface
+        status = setsockopt(MulticastSD, IPPROTO_IP, IP_ADD_MEMBERSHIP, 
+                (const void *)&imreq, sizeof(struct ip_mreq));
+
+
+//        Mcast_join(MulticastSD, (const SA *)&saddr, sizeof(saddr), NULL, 0);
 
         joinedMulticast = TRUE;
     }
