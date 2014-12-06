@@ -120,35 +120,33 @@ static void setMultiCast(IA MulIP, uint16_t MulPort) {
         struct group_req group;
         char interface[] = "ether0";
         struct sockaddr_in saddr;
-        struct ip_mreq mreq;
+//        struct ip_mreq mreq;
 
         unsigned char ttl = 1;
         unsigned char one = 1;
+        MulticastIP = MulIP;
+        MulticastPort = MulPort;
 
         // set content of struct saddr and imreq to zero
         memset(&saddr, 0, sizeof(struct sockaddr_in));
-        memset(&mreq, 0, sizeof(struct ip_mreq));
+//        memset(&mreq, 0, sizeof(struct ip_mreq));
 
         saddr.sin_family = AF_INET;
         saddr.sin_port = htons(MulPort);
         saddr.sin_addr.s_addr = htonl(INADDR_ANY); // bind socket to any interface
         Bind(MulticastSD, (struct sockaddr *)&saddr, sizeof(saddr));
 
-        setsockopt(MulticastSD, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
-                sizeof(unsigned char));
+       setsockopt(MulticastSD, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
+               sizeof(unsigned char));
 
         // send multicast traffic to myself too
         setsockopt(MulticastSD, IPPROTO_IP, IP_MULTICAST_LOOP,
                 &one, sizeof(unsigned char));
 
         /* use setsockopt() to request that the kernel join a multicast group */
-        mreq.imr_multiaddr = MulIP;
-        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
-        if (setsockopt(MulticastSD, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-            perror("setsockopt");
-            exit(1);
-        }
+        saddr.sin_addr = MulIP; // bind socket to any interface
+        Mcast_join(MulticastSD, (const SA *)&saddr, sizeof(saddr), NULL, 0);
 
         joinedMulticast = TRUE;
     }
@@ -287,12 +285,8 @@ static void sendEndMulticast() {
     sprintf(msgBuf, " <<<<< This is node VM%d . Tour has ended .    \
             Group members please identify yourselves. >>>>>\n",     
             getHostVmNodeNo());
-   
-    if (sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, 
-                (struct sockaddr *) &addr, sizeof(addr)) < 0){
-        perror("sendto");
-        exit(1);
-    }
+    Sendto(MulticastSD, (void *)msgBuf, MAX_BUF, 0, 
+                (SA *) &addr, sizeof(addr));
 }
 
 static void handleMulticast() {
@@ -311,7 +305,7 @@ static void handleMulticast() {
 
     printf("%s", msgBuf);
 
-    if (haveSentMyMSG) {
+    if (!haveSentMyMSG) {
         struct sockaddr_in addr;
         /* set up destination address */
         memset(&addr, 0, sizeof(addr));
@@ -331,7 +325,7 @@ static void handleMulticast() {
     FD_ZERO(&fdSet);
     FD_SET(MulticastSD, &fdSet);
     while (1) {
-        printf("\n");
+    //    printf("\n");
         readFdSet = fdSet;
         timeout.tv_sec  = READ_TIMEOUT;
         timeout.tv_usec = 0;
@@ -343,6 +337,7 @@ static void handleMulticast() {
         // Multicast Timeout
         if (nbytes == 0) {
             printf("Exiting \n");
+            exit(0);
         }
         // Received IP Packet on tour rt socket
         else if (FD_ISSET(MulticastSD, &readFdSet)) {
@@ -371,7 +366,6 @@ static void readAllSockets() {
     pingCountDown = PING_COUNTDOWN;
 
     while (1) {
-        printf("\n");
         readFdSet = fdSet;
         timeout.tv_sec  = PING_TIMEOUT;
         timeout.tv_usec = 0;

@@ -11,8 +11,8 @@
 #define AREQ_TIMEOUT    5      // sec
 #define PING_TIMEOUT    1      // sec
 #define PING_COUNTDOWN  5
-#define MULTICAST_IP    "226.1.2.3"
-#define MULTICAST_PORT  0x8787
+#define MULTICAST_IP    "234.245.210.123"
+#define MULTICAST_PORT  9850
 #define MAX_BUF         1000
 #define READ_TIMEOUT    5
 
