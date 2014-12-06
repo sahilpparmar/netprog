@@ -48,6 +48,7 @@ int areq(SA *IPaddr, socklen_t salen, HWAddr *hwaddr) {
     }
 
     // Send AREQ to ARP module
+    printf("AREQ Request for IP: %s sent\n", getIPStrByIPAddr(((struct sockaddr_in*) IPaddr)->sin_addr));
     writeUnixSocket(sockfd, ((struct sockaddr_in*) IPaddr)->sin_addr,
             hwaddr->sll_ifindex, hwaddr->sll_hatype, hwaddr->sll_halen);
 
@@ -58,14 +59,16 @@ int areq(SA *IPaddr, socklen_t salen, HWAddr *hwaddr) {
 
     if (Select(sockfd + 1, &readfds, NULL, NULL, &timeout) == 0) {
         // AREQ timeout
-        Close(sockfd);
+        close(sockfd);
+        err_msg("AREQ Reply Timeout: Unable to fetch HW Address");
         return -1;
     }
     
     // Receive ARP response
     readUnixSocket(sockfd, hwaddr->sll_addr);
+    printf("AREQ Reply Success => HW Address: %s\n", ethAddrNtoP(hwaddr->sll_addr));
 
-    Close(sockfd);
+    close(sockfd);
     return 0;
 }
 

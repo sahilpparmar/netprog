@@ -100,9 +100,7 @@ int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
     struct hwa_info *hwahead, *hwa;
     int totalPairs = 0;
 
-#if DEBUG
     printf("Following are all eth0 interface <IP address, HW address> pairs =>\n");
-#endif
 
     hwahead = Get_hw_addrs();
     for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
@@ -116,9 +114,10 @@ int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
             memcpy(eth0AddrPairs[totalPairs].hwaddr, hwa->if_haddr, IF_HADDR);
             totalPairs++;
 
-#if DEBUG
             // Print Pair information
+#if DEBUG
             printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
+#endif
 
             if ((sa = hwa->ip_addr) != NULL)
                 printf("         IP addr = %s\n", Sock_ntop_host(sa, sizeof(*sa)));
@@ -140,10 +139,12 @@ int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
                     printf("%.2x%s", *ptr++ & 0xff, (i == 1) ? " " : ":");
                 } while (--i > 0);
             }
+#if DEBUG
             printf("\n         interface index = %d\n\n", hwa->if_index);
 #endif
         }
     }
+    printf("\n");
     free(hwahead);
     return totalPairs;
 }

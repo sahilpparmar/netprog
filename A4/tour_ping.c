@@ -1,7 +1,5 @@
 #include "tour.h"
 
-#define DATALEN 56
-
 bool isPingEnable(bool *pingStatus) {
     int i;
     for (i = 1; i <= MAX_NODES; i++) {
@@ -194,7 +192,7 @@ bool recvPingReply(int sockfd) {
     tv_sub(tvrecv, tvsend);
     rtt = tvrecv->tv_sec * 1000.0 + tvrecv->tv_usec / 1000.0;
 
-    printf("%d bytes from %s: seq=%u, ttl=%d, rtt=%.3f ms\n",
+    printf("\n%d bytes from %s: seq=%u, ttl=%d, rtt=%.3f ms\n",
             icmplen, getIPStrByIPAddr(ip->ip_src),
             ntohs(icmp->icmp_seq), ip->ip_ttl, rtt);
 

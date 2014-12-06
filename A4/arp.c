@@ -44,7 +44,7 @@ static void printEthernetFrame(EthernetFrame *frame) {
     printf("SrcIP: %s\t", getIPStrByIPAddr(packet->srcIP));
     printf("DestIP: %s\n", getIPStrByIPAddr(packet->destIP));
     printf("SrcMAC: %s\t", ethAddrNtoP(packet->srcMAC));
-    printf("DestMAC: %s\n\n", ethAddrNtoP(packet->destMAC));
+    printf("DestMAC: %s\n", ethAddrNtoP(packet->destMAC));
 }
 
 static void sendEthernetPacket(int sockfd, EthernetFrame *frame, int ifindex,
@@ -62,10 +62,8 @@ static void sendEthernetPacket(int sockfd, EthernetFrame *frame, int ifindex,
     sockAddr.sll_ifindex  = ifindex;
     memcpy(sockAddr.sll_addr, GET_DEST_MAC(frame), halen);
 
-#if DEBUG
     printf("Sending Ethernet Packet ==>\n");
     printEthernetFrame(frame);
-#endif
 
     if (sendto(sockfd, (void *)frame, sizeof(EthernetFrame), 0,
                (SA *) &sockAddr, sizeof(sockAddr)) == -1)
@@ -95,10 +93,8 @@ static bool recvEthernetPacket(int sockfd, EthernetFrame *frame, struct sockaddr
     assert(((GET_OP_TYPE(frame) == REQUEST) || (GET_OP_TYPE(frame) == REPLY)) &&
                 "Invalid ARP OP type in Ethernet Frame");
 
-#if DEBUG
     printf("Receving Ethernet Packet ==>\n");
     printEthernetFrame(frame);
-#endif
     return TRUE;
 }
 
@@ -161,7 +157,7 @@ static int processARPPacket(int pfSockFd, EthernetFrame *frame, struct sockaddr_
         char *destHWAddr;
         if ((destHWAddr = checkIfDestNodeReached(GET_DEST_IP(frame), addrPairs, totalPairs)) != NULL) {
             // Reached Destination Node, force update Source Node Info
-            printf("ARP Request Reached Destination Node, sending back ARP REPLY\n");
+            printf("\nARP Request Reached Destination Node, sending back ARP REPLY\n");
             updateARPCache(GET_SRC_IP(frame), GET_SRC_MAC(frame),
                 sockAddr->sll_ifindex, sockAddr->sll_hatype, 0, TRUE);
 
@@ -226,7 +222,7 @@ static void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
             // Received a FIN packet, remove partial cache entry
             printf("Received FIN packet from Tour Unix domain socket\n");
             invalidateCache(destIPAddr);
-            Close(connfd);
+            close(connfd);
             connfd = -1;
         }
 
@@ -237,7 +233,7 @@ static void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
 
             if (recvEthernetPacket(pfSockFd, &frame, &sockAddr)) {
                 if (processARPPacket(pfSockFd, &frame, &sockAddr, addrPairs, totalPairs) == REPLY) {
-                    Close(connfd);
+                    close(connfd);
                     connfd = -1;
                 }
             }
@@ -259,7 +255,7 @@ static void readAllSockets(int pfSockFd, int listenfd, fd_set fdSet,
                 // ARP entry present, send hwaddr to tour
                 printf("ARP Cache entry Present, sending HW addr to Tour process\n");
                 writeUnixSocket(connfd, entry->hwAddr);
-                Close(connfd);
+                close(connfd);
                 connfd = -1;
             } else {
                 // Update Partial Cache entry
@@ -303,6 +299,6 @@ int main() {
     readAllSockets(pfSockFd, listenfd, fdSet, eth0AddrPairs, totalPairs);
 
     unlink(filePath);
-    Close(pfSockFd);
-    Close(listenfd);
+    close(pfSockFd);
+    close(listenfd);
 }

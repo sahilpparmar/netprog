@@ -227,7 +227,7 @@ static void startTour(IA *List, int tourCount) {
     TourPayload *payload;
 
     bzero(&packet, sizeof(packet));
-    printf("Initializing Tour ==>\n");
+    printf("Initializing Tour....OK.\n");
 
     generateDataPayload(&packet.payload, List, tourCount);
     forwardPacket(&packet, tourCount);
@@ -270,7 +270,7 @@ static void handleMulticast() {
     addr.sin_port = htons(MulticastPort);
 
     sprintf(msgBuf, "<<<<< Node VM%d. I am a member of the group. >>>>>",getHostVmNodeNo());
-    printf("Node VM%d => Sending: %s\n", getHostVmNodeNo(), msgBuf);
+    printf("\nNode VM%d => Sending: %s\n\n", getHostVmNodeNo(), msgBuf);
 
     Sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, (SA *) &addr, sizeof(addr));
 
@@ -332,6 +332,7 @@ static void readAllSockets() {
 
         // PING Timeout
         if (n == 0) {
+            printf("\n");
             assert(isPingEnable(pingStatus) && "Ping Status should be enable");
             if (endOfTour) {
                 pingCountDown--;
@@ -354,6 +355,7 @@ static void readAllSockets() {
             if ((nbytes = recvIPPacket(RTRouteSD, &packet)) > 0) {
                 int sourceNode = getVmNodeByIPAddr(packet.iphead.ip_src);
 
+                printf("\n");
                 printf("[%s] Received Source Routing Packet from VM%d\n", curTimeStr(), sourceNode);
 
                 if (isLastTourNode(&packet, nbytes)) {
@@ -363,6 +365,8 @@ static void readAllSockets() {
                 }
 
                 if (!pingStatus[sourceNode]) {
+                    printf("PING VM%d (%s): 20 data bytes\n", sourceNode, 
+                            getIPStrByIPAddr(packet.iphead.ip_src));
                     pingStatus[sourceNode] = TRUE;
                     sendPingRequests(PingReqSD, pingStatus, HostIP, HostMAC, sourceNode);
                 }
@@ -379,7 +383,7 @@ static void readAllSockets() {
 
         // Received Multicast UDP message
         else if (FD_ISSET(MulticastSD, &readFdSet)) {
-            // Handle message
+            printf("\n");
             disablePingStatus(pingStatus);
             endOfTour = FALSE;
             pingCountDown = PING_COUNTDOWN;
