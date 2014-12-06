@@ -7,7 +7,6 @@ static uint16_t MulticastPort;
 static struct sockaddr_in GroupSock;
 static int RTRouteSD, MulticastSD, PingReqSD, PingReplySD;
 static bool joinedMulticast = FALSE;
-static bool haveSentMyMSG = FALSE;
 
 static void getMulticastInfo() {
     MulticastIP   = getIPAddrByIPStr(MULTICAST_IP);
@@ -237,76 +236,58 @@ static void sendEndMulticast() {
     addr.sin_addr = MulticastIP;
     addr.sin_port = htons(MulticastPort);
 
-    sprintf(msgBuf, " <<<<< This is node VM%d . Tour has ended .    \
-            Group members please identify yourselves. >>>>>\n",     
+    sprintf(msgBuf, "<<<<< This is node VM%d. Tour has ended. Group members please identify yourselves. >>>>>",
             getHostVmNodeNo());
-    printf("Node VM%d. Sending: <<<<< This is node VM%d . Tour has ended .    \
-            Group members please identify yourselves. >>>>>\n", getHostVmNodeNo(), getHostVmNodeNo());
+    printf("Node VM%d => Sending: %s\n", getHostVmNodeNo(), msgBuf);
     Sendto(MulticastSD, (void *)msgBuf, MAX_BUF, 0, 
                 (SA *) &addr, sizeof(addr));
 }
 
 static void handleMulticast() {
     char msgBuf[MAX_BUF];
+    struct sockaddr_in addr;
     fd_set fdSet, readFdSet;
     struct timeval timeout;
     int maxfd;
-    uint32_t nbytes;
+    uint32_t n;
 
+    n = Recvfrom(MulticastSD, msgBuf, MAX_BUF, 0, NULL, NULL);
+    msgBuf[n] = '\0';
+    printf("Node VM%d => Received: %s\n", getHostVmNodeNo(), msgBuf);
 
-    if ((nbytes = recvfrom(MulticastSD, msgBuf, 
-                    MAX_BUF, 0, NULL, NULL)) < 0) {
-        perror("recvfrom");
-        exit(1);
-    }
+    /* set up destination address */
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr = MulticastIP;
+    addr.sin_port = htons(MulticastPort);
 
-    printf("%s", msgBuf);
+    sprintf(msgBuf, "<<<<< Node VM%d. I am a member of the group. >>>>>",getHostVmNodeNo());
+    printf("Node VM%d => Sending: %s\n", getHostVmNodeNo(), msgBuf);
 
-    if (!haveSentMyMSG) {
-        struct sockaddr_in addr;
-        /* set up destination address */
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_addr = MulticastIP;
-        addr.sin_port = htons(MulticastPort);
-
-        sprintf(msgBuf, "<<<<< Node vm%d . I am a member of the group.  >>>>>\n",getHostVmNodeNo());
-        printf("Node VM%d. Sending: %s", getHostVmNodeNo(), msgBuf);
-        if (sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, 
-                    (struct sockaddr *) &addr, sizeof(addr)) < 0){
-            perror("sendto");
-            exit(1);
-        }
-        haveSentMyMSG = TRUE;
-    }
+    Sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, (SA *) &addr, sizeof(addr));
 
     FD_ZERO(&fdSet);
     FD_SET(MulticastSD, &fdSet);
     while (1) {
-    //    printf("\n");
         readFdSet = fdSet;
         timeout.tv_sec  = READ_TIMEOUT;
         timeout.tv_usec = 0;
 
         maxfd = MulticastSD + 1;
 
-        nbytes = Select(maxfd, &readFdSet, NULL, NULL, &timeout);
+        n = Select(maxfd, &readFdSet, NULL, NULL, &timeout);
 
         // Multicast Timeout
-        if (nbytes == 0) {
-            printf(" Terminating Tour Application. \n");
-            printf("================================\n");
+        if (n == 0) {
+            printf("Terminating Tour Application.\n");
+            printf("================================================================\n");
             exit(0);
         }
         // Received IP Packet on tour rt socket
         else if (FD_ISSET(MulticastSD, &readFdSet)) {
-            if ((nbytes = recvfrom(MulticastSD, msgBuf, 
-                            MAX_BUF, 0, NULL, NULL)) < 0) {
-                perror("recvfrom");
-                exit(1);
-            }
-
-            printf("Node VM%d. Received: %s", getHostVmNodeNo(), msgBuf);
+            n = Recvfrom(MulticastSD, msgBuf, MAX_BUF, 0, NULL, NULL);
+            msgBuf[n] = '\0';
+            printf("Node VM%d => Received: %s\n", getHostVmNodeNo(), msgBuf);
         }
     }
 }
@@ -346,7 +327,6 @@ static void readAllSockets() {
                 pingCountDown--;
             }
             if (pingCountDown == 0) {
-                printf("<<<<< End of Tour >>>>>\n");
                 disablePingStatus(pingStatus);
                 endOfTour = FALSE;
                 pingCountDown = PING_COUNTDOWN;
@@ -391,11 +371,10 @@ static void readAllSockets() {
         // Received Multicast UDP message
         else if (FD_ISSET(MulticastSD, &readFdSet)) {
             // Handle message
-            handleMulticast();            
             disablePingStatus(pingStatus);
             endOfTour = FALSE;
             pingCountDown = PING_COUNTDOWN;
-
+            handleMulticast();
         }
     }
 }
