@@ -5,7 +5,7 @@ static char HostMAC[IF_HADDR];
 static IA MulticastIP;
 static uint16_t MulticastPort;
 static struct sockaddr_in GroupSock;
-static int RTRouteSD, MulticastSD, PingReplySD;
+static int RTRouteSD, MulticastSD, PingReqSD, PingReplySD;
 static bool joinedMulticast = FALSE;
 static bool haveSentMyMSG = FALSE;
 
@@ -19,6 +19,7 @@ static void createSockets() {
 
     RTRouteSD   = socket(AF_INET, SOCK_RAW, IPPROTO_TOUR);
     MulticastSD = socket(AF_INET, SOCK_DGRAM, 0);
+    PingReqSD   = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     PingReplySD = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
     if (RTRouteSD < 0)
@@ -37,6 +38,11 @@ static void createSockets() {
     /* allow multiple sockets to use the same PORT number */
     if (setsockopt(MulticastSD, SOL_SOCKET, SO_REUSEADDR, &ok, sizeof(ok)) < 0)
         err_quit("Reusing ADDR failed");
+
+    if (PingReqSD < 0)
+        err_quit("Opening Ping Request socket error");
+    else
+        printf("Opening Ping Request socket....OK.\n");
 
     if (PingReplySD < 0)
         err_quit("Opening Ping Reply socket error");
@@ -340,10 +346,9 @@ static void readAllSockets() {
                 disablePingStatus(pingStatus);
                 endOfTour = FALSE;
                 pingCountDown = PING_COUNTDOWN;
-                // TODO: Send Multicast Msg to All
                 sendEndMulticast();
             } else {
-                sendPingRequests(pingStatus, -1);
+                sendPingRequests(PingReqSD, pingStatus, HostIP, HostMAC, -1);
             }
         }
 
@@ -365,7 +370,7 @@ static void readAllSockets() {
 
                 if (!pingStatus[sourceNode]) {
                     pingStatus[sourceNode] = TRUE;
-                    sendPingRequests(pingStatus, sourceNode);
+                    sendPingRequests(PingReqSD, pingStatus, HostIP, HostMAC, sourceNode);
                 }
 
                 setMultiCast(packet.payload.multicastIP, packet.payload.multicastPort);
@@ -376,8 +381,8 @@ static void readAllSockets() {
 
         // Received PING Reply IP Packet on pg socket
         else if (FD_ISSET(PingReplySD, &readFdSet)) {
-            // TODO: Receive Ping Reply
-
+            if (!recvPingReply(PingReplySD))
+                err_msg("Invalid Ping Reply!");
         }
 
         // Received Multicast UDP message
@@ -390,26 +395,6 @@ static void readAllSockets() {
 
         }
     }
-}
-
-static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
-    HWAddr hwAddr;
-    struct sockaddr_in sockAddr;
-
-    bzero(&sockAddr, sizeof(sockAddr));
-    sockAddr.sin_family = AF_INET;
-    sockAddr.sin_addr   = s_ipaddr;
-    sockAddr.sin_port   = 0;
-
-    bzero(&hwAddr, sizeof(hwAddr));
-    hwAddr.sll_ifindex = 2;
-    hwAddr.sll_hatype  = ARPHRD_ETHER;
-    hwAddr.sll_halen   = ETH_ALEN;
-
-    if (areq((SA *) &sockAddr, sizeof(sockAddr), &hwAddr) == 0) {
-        memcpy(s_haddr, hwAddr.sll_addr, ETH_ALEN);
-    }
-    return s_haddr;
 }
 
 int main(int argc, char* argv[]) {

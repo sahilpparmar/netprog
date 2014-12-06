@@ -3,24 +3,26 @@
 
 #include "utils.h"
 #include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
 
-#define DEBUG           0
-#define MAXHOPS         100    // hops
-#define IPPROTO_TOUR    154    // Between 143-252
-#define UNIQ_ID         0x6565
-#define TTL_OUT         1
-#define AREQ_TIMEOUT    5      // sec
-#define PING_TIMEOUT    1      // sec
-#define PING_COUNTDOWN  5
-#define MULTICAST_IP    "234.245.210.123"
-#define MULTICAST_PORT  9850
-#define MAX_BUF         1000
-#define READ_TIMEOUT    5
+#define DEBUG          0
+#define MAXHOPS        100    // hops
+#define IPPROTO_TOUR   154    // Between 143-252
+#define UNIQ_ID        0x6565
+#define PING_REQ_ID    0x7676
+#define TTL_OUT        1
+#define AREQ_TIMEOUT   5      // sec
+#define PING_TIMEOUT   1      // sec
+#define PING_COUNTDOWN 5
+#define MULTICAST_IP   "234.245.210.123"
+#define MULTICAST_PORT 9850
+#define MAX_BUF        1000
+#define READ_TIMEOUT   5
 
 /*
     ########################### TOUR Message format ######################
-    | IP Multicast Address | Port number | Current Index | IP LIST       |
-    | STRING NUMBER        |   UINT_16   |   UINT_16     | ARRAY IP[MAX] |
+    | IP Multicast Address | Port number | Current Index |   IP LIST     |
+    |     struct in_addr   |   UINT_16   |   UINT_16     | ARRAY IP[MAX] |
     |#####################################################################
 */
 
@@ -37,6 +39,18 @@ typedef struct {
 } IPPacket;
 
 typedef struct {
+    struct ip iphead;
+    struct icmp icmphead;
+} PingIPPacket;
+
+typedef struct {
+    uint8_t destMAC[IF_HADDR];
+    uint8_t srcMAC[IF_HADDR];
+    uint16_t protocol;
+    PingIPPacket pingIPPacket;
+} PingPacket;
+
+typedef struct {
     int      sll_ifindex;    /* Interface number */
     uint16_t sll_hatype;     /* Hardware type */
     uint8_t  sll_halen;      /* Length of address */
@@ -46,6 +60,8 @@ typedef struct {
 int areq(SA *IPaddr, socklen_t salen, HWAddr *hwaddr);
 bool isPingEnable(bool *pingStatus);
 void disablePingStatus(bool *pingStatus);
-int sendPingRequests(bool *pingStatus, int specific);
+int sendPingRequests(int sockfd, bool *pingStatus, IA hostIP,
+                    char *hostMAC, int specific);
+bool recvPingReply(int sockfd);
 
 #endif /* !_TOUR_H */
