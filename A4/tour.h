@@ -4,6 +4,7 @@
 #include "utils.h"
 #include <netinet/ip.h>
 
+#define DEBUG           0
 #define MAXHOPS         100    // hops
 #define IPPROTO_TOUR    154    // Between 143-252
 #define UNIQ_ID         0x6565
@@ -43,5 +44,8 @@ typedef struct {
 } HWAddr;
 
 int areq(SA *IPaddr, socklen_t salen, HWAddr *hwaddr);
+bool isPingEnable(bool *pingStatus);
+void disablePingStatus(bool *pingStatus);
+int sendPingRequests(bool *pingStatus, int specific);
 
 #endif /* !_TOUR_H */

@@ -21,6 +21,11 @@ typedef enum {
     FALSE = 0
 } bool;
 
+typedef struct {
+    IA ipaddr;
+    char hwaddr[IF_HADDR];
+} Eth0AddrPairs;
+
 int getVmNodeByIPAddr(IA ipAddr);
 char* getIPStrByVmNode(char *ip, int node);
 char* getIPStrByIPAddr(IA ipAddr);
@@ -30,5 +35,8 @@ int getHostVmNodeNo();
 char* getFullPath(char *fullPath, char *fileName, int size, bool isTemp);
 bool isSameIPAddr(IA ip1, IA ip2);
 char* ethAddrNtoP(char *nMAC);
+int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs);
+char* curTimeStr();
+uint16_t in_cksum(uint16_t *addr, int len);
 
 #endif /* !_UTILS_H */

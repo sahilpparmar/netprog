@@ -3,6 +3,7 @@
 
 #include "utils.h"
 
+#define DEBUG           0
 #define PROTOCOL_NUMBER 0x5454
 #define IDENT_NUMBER    0x4545
 #define HARD_TYPE       ARPHRD_ETHER
@@ -16,11 +17,6 @@
 #define GET_DEST_IP(frame)   ((frame)->packet.destIP)
 #define GET_SRC_MAC(frame)   ((frame)->packet.srcMAC)
 #define GET_DEST_MAC(frame)  ((frame)->packet.destMAC)
-
-typedef struct {
-    IA ipaddr;
-    char hwaddr[IF_HADDR];
-} Eth0AddrPairs;
 
 // ARP OP feild type
 typedef enum {
