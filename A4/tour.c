@@ -234,6 +234,8 @@ static void sendEndMulticast() {
     sprintf(msgBuf, " <<<<< This is node VM%d . Tour has ended .    \
             Group members please identify yourselves. >>>>>\n",     
             getHostVmNodeNo());
+    printf("Node VM%d. Sending: <<<<< This is node VM%d . Tour has ended .    \
+            Group members please identify yourselves. >>>>>\n", getHostVmNodeNo(), getHostVmNodeNo());
     Sendto(MulticastSD, (void *)msgBuf, MAX_BUF, 0, 
                 (SA *) &addr, sizeof(addr));
 }
@@ -263,6 +265,7 @@ static void handleMulticast() {
         addr.sin_port = htons(MulticastPort);
 
         sprintf(msgBuf, "<<<<< Node vm%d . I am a member of the group.  >>>>>\n",getHostVmNodeNo());
+        printf("Node VM%d. Sending: %s", getHostVmNodeNo(), msgBuf);
         if (sendto(MulticastSD, msgBuf, sizeof(msgBuf), 0, 
                     (struct sockaddr *) &addr, sizeof(addr)) < 0){
             perror("sendto");
@@ -285,7 +288,8 @@ static void handleMulticast() {
 
         // Multicast Timeout
         if (nbytes == 0) {
-            printf("Exiting \n");
+            printf(" Terminating Tour Application. \n");
+            printf("================================\n");
             exit(0);
         }
         // Received IP Packet on tour rt socket
@@ -296,7 +300,7 @@ static void handleMulticast() {
                 exit(1);
             }
 
-            printf("%s", msgBuf);
+            printf("Node VM%d. Received: %s", getHostVmNodeNo(), msgBuf);
         }
     }
 }
@@ -371,7 +375,6 @@ static void readAllSockets() {
                 setMultiCast(packet.payload.multicastIP, packet.payload.multicastPort);
             }
             
-            setMultiCast(packet.payload.multicastIP, packet.payload.multicastPort);
         }
 
         // Received PING Reply IP Packet on pg socket
