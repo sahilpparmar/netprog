@@ -96,3 +96,96 @@ char* ethAddrNtoP(char *nMAC) {
     return pMAC;
 }
 
+int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
+    struct hwa_info *hwahead, *hwa;
+    int totalPairs = 0;
+
+    printf("Following are all eth0 interface <IP address, HW address> pairs =>\n");
+
+    hwahead = Get_hw_addrs();
+    for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
+        if (strcmp(hwa->if_name, "eth0") == 0 || strcmp(hwa->if_name, "wlan0") == 0) {
+            struct sockaddr     *sa;
+            char   *ptr;
+            int    i, prflag;
+
+            // Store Pair information
+            eth0AddrPairs[totalPairs].ipaddr = ((struct sockaddr_in*) hwa->ip_addr)->sin_addr;
+            memcpy(eth0AddrPairs[totalPairs].hwaddr, hwa->if_haddr, IF_HADDR);
+#if DEBUG
+            printf("Pair => < %s, %s >\n", getIPStrByIPAddr(eth0AddrPairs[totalPairs].ipaddr),
+                    ethAddrNtoP(eth0AddrPairs[totalPairs].hwaddr));
+#endif
+            totalPairs++;
+
+            // Print Pair information
+            printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
+
+            if ((sa = hwa->ip_addr) != NULL)
+                printf("         IP addr = %s\n", Sock_ntop_host(sa, sizeof(*sa)));
+
+            prflag = 0;
+            i = 0;
+            do {
+                if (hwa->if_haddr[i] != '\0') {
+                    prflag = 1;
+                    break;
+                }
+            } while (++i < IF_HADDR);
+
+            if (prflag) {
+                printf("         HW addr = ");
+                ptr = hwa->if_haddr;
+                i = IF_HADDR;
+                do {
+                    printf("%.2x%s", *ptr++ & 0xff, (i == 1) ? " " : ":");
+                } while (--i > 0);
+            }
+#if DEBUG
+            printf("\n         interface index = %d\n", hwa->if_index);
+#endif
+        }
+    }
+    free(hwahead);
+    printf("\n");
+    return totalPairs;
+}
+
+char* curTimeStr() {
+    static char timeStr[100];
+    time_t timestamp = time(NULL);
+
+    strcpy(timeStr, asctime(localtime((const time_t *) &timestamp)));
+    timeStr[strlen(timeStr)-1] = '\0';
+    return timeStr;
+}
+
+uint16_t in_cksum(uint16_t *addr, int len) {
+    int      nleft = len;
+    uint32_t sum = 0;
+    uint16_t *w = addr;
+    uint16_t answer = 0;
+
+    /*
+     * Our algorithm is simple, using a 32 bit accumulator (sum), we add
+     * sequential 16 bit words to it, and at the end, fold back all the
+     * carry bits from the top 16 bits into the lower 16 bits.
+     */
+    while (nleft > 1)  {
+        sum += *w++;
+        nleft -= 2;
+    }
+
+    /* 4mop up an odd byte, if necessary */
+    if (nleft == 1) {
+        *(uint8_t *)(&answer) = *(uint8_t *)w ;
+        sum += answer;
+    }
+
+    /* 4add back carry outs from top 16 bits to low 16 bits */
+    sum = (sum >> 16) + (sum & 0xffff); /* add hi 16 to low 16 */
+    sum += (sum >> 16);                 /* add carry */
+    answer = ~sum;                      /* truncate to 16 bits */
+    return answer;
+}
+

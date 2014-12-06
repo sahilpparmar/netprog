@@ -1,64 +1,33 @@
 #include "tour.h"
 
-#define DEBUG 0
-
 static IA HostIP;
+static char HostMAC[IF_HADDR];
 static IA MulticastIP;
 static uint16_t MulticastPort;
-struct sockaddr_in GroupSock;
-int RTRouteSD, MulticastSD, PingReplySD;
-bool joinedMulticast = FALSE;
-bool haveSentMyMSG = FALSE; 
+static struct sockaddr_in GroupSock;
+static int RTRouteSD, MulticastSD, PingReplySD;
+static bool joinedMulticast = FALSE;
+static bool haveSentMyMSG = FALSE;
 
 static void getMulticastInfo() {
     MulticastIP   = getIPAddrByIPStr(MULTICAST_IP);
     MulticastPort = MULTICAST_PORT;
 }
 
-static uint16_t csum(uint16_t *addr, int len) {
-    long sum = 0;
-
-    while (len > 1) {
-        sum += *(addr++);
-        len -= 2;
-    }
-
-    if (len > 0)
-        sum += *addr;
-
-    while (sum >> 16)
-        sum = ((sum & 0xffff) + (sum >> 16));
-
-    sum = ~sum;
-
-    return ((uint16_t) sum);
-}
-
-static char* curTimeStr() {
-    static char timeStr[100];
-    time_t timestamp = time(NULL);
-
-    strcpy(timeStr, asctime(localtime((const time_t *) &timestamp)));
-    timeStr[strlen(timeStr)-1] = '\0';
-    return timeStr;
-}
-
 static void createSockets() {
-    int hdrincl = 1;
-    int yes = 1;
+    int ok = 1;
 
-    RTRouteSD       = socket(AF_INET, SOCK_RAW, IPPROTO_TOUR);
-    MulticastSD     = socket(AF_INET, SOCK_DGRAM, 0);
-//    MulticastSendSD = socket(AF_INET, SOCK_DGRAM, 0);
-    PingReplySD     = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    RTRouteSD   = socket(AF_INET, SOCK_RAW, IPPROTO_TOUR);
+    MulticastSD = socket(AF_INET, SOCK_DGRAM, 0);
+    PingReplySD = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
     if (RTRouteSD < 0)
         err_quit("Opening RT Route socket error");
     else
         printf("Opening RT Route socket....OK.\n");
 
-    if (setsockopt(RTRouteSD, IPPROTO_IP, IP_HDRINCL, &hdrincl, sizeof(hdrincl)) < 0)
-        err_quit("Error in setting Sock option for RT Socket\n");
+    if (setsockopt(RTRouteSD, IPPROTO_IP, IP_HDRINCL, &ok, sizeof(ok)) < 0)
+        err_quit("Error in setting Sock option for RT Socket");
 
     if (MulticastSD < 0)
         err_quit("Opening Multicast datagram socket error");
@@ -66,10 +35,8 @@ static void createSockets() {
         printf("Opening Multicast datagram socket....OK.\n");
 
     /* allow multiple sockets to use the same PORT number */
-    if (setsockopt(MulticastSD,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes)) < 0) {
-       perror("Reusing ADDR failed");
-       exit(1);
-       }
+    if (setsockopt(MulticastSD, SOL_SOCKET, SO_REUSEADDR, &ok, sizeof(ok)) < 0)
+        err_quit("Reusing ADDR failed");
 
     if (PingReplySD < 0)
         err_quit("Opening Ping Reply socket error");
@@ -182,11 +149,24 @@ static printIPPacket(IPPacket *packet, int nbytes) {
 
 static int recvIPPacket(int sockfd, IPPacket *packet) {
     int nbytes;
+
     nbytes = Recvfrom(RTRouteSD, packet, sizeof(IPPacket), 0, NULL, NULL);
+
+    packet->iphead.ip_len = ntohs(packet->iphead.ip_len);
+    packet->iphead.ip_id  = ntohs(packet->iphead.ip_id);
+    packet->iphead.ip_sum = ntohs(packet->iphead.ip_sum);
+
+    // Filter packets with unknown identification number
+    if (packet->iphead.ip_id != UNIQ_ID) {
+        err_msg("IP Packet with Unknown Identification Number received");
+        return 0;
+    }
+
 #if DEBUG
     printf("Recevied IP Packet of len %d ==>\n", nbytes);
     printIPPacket(packet, nbytes);
 #endif
+
     return nbytes;
 }
 
@@ -211,7 +191,7 @@ static void fillIPHeader(IPPacket *packet, IA destIP, uint16_t numBytes) {
     iphdr->ip_p   = IPPROTO_TOUR;
     iphdr->ip_src = HostIP;
     iphdr->ip_dst = destIP;
-    iphdr->ip_sum = htons(csum((uint16_t *)packet, numBytes));
+    iphdr->ip_sum = htons(in_cksum((uint16_t *)packet, numBytes));
 }
 
 static int forwardPacket(IPPacket *packet, int numNodes) {
@@ -242,36 +222,6 @@ static void startTour(IA *List, int tourCount) {
 
     generateDataPayload(&packet.payload, List, tourCount);
     forwardPacket(&packet, tourCount);
-}
-
-static bool isPingEnable(bool *pingStatus) {
-    int i;
-    for (i = 1; i <= MAX_NODES; i++) {
-        if (pingStatus[i])
-            return TRUE;
-    }
-    return FALSE;
-}
-
-static void disablePingStatus(bool *pingStatus) {
-    int i;
-    for (i = 1; i <= MAX_NODES; i++) {
-        pingStatus[i] = FALSE;
-    }
-}
-
-static int sendPingRequests(bool *pingStatus, int specific) {
-    // TODO: Get MAC for source IP via areq and send a PING REQ
-    if (specific != -1) {
-        assert(pingStatus[specific] && "Ping Status should be enable");
-        printf("Sending a PING packet to VM%d\n", specific);
-    } else {
-        int i;
-        for (i = 1; i <= MAX_NODES; i++) {
-            if (pingStatus[i])
-                printf("Sending a PING packet to VM%d\n", i);
-        }
-    }
 }
 
 static void sendEndMulticast() {
@@ -407,23 +357,26 @@ static void readAllSockets() {
         // Received IP Packet on tour rt socket
         else if (FD_ISSET(RTRouteSD, &readFdSet)) {
             IPPacket packet;
-            int nbytes = recvIPPacket(RTRouteSD, &packet);
-            int sourceNode = getVmNodeByIPAddr(packet.iphead.ip_src);
+            int nbytes;
 
-            printf("[%s] Received Source Routing Packet from VM%d\n", curTimeStr(), sourceNode);
+            if ((nbytes = recvIPPacket(RTRouteSD, &packet)) > 0) {
+                int sourceNode = getVmNodeByIPAddr(packet.iphead.ip_src);
 
-            if (isLastTourNode(&packet, nbytes)) {
-                endOfTour = TRUE;
-            } else {
-                forwardPacket(&packet, getTourNodeCntByPackSize(nbytes));
+                printf("[%s] Received Source Routing Packet from VM%d\n", curTimeStr(), sourceNode);
+
+                if (isLastTourNode(&packet, nbytes)) {
+                    endOfTour = TRUE;
+                } else {
+                    forwardPacket(&packet, getTourNodeCntByPackSize(nbytes));
+                }
+
+                if (!pingStatus[sourceNode]) {
+                    pingStatus[sourceNode] = TRUE;
+                    sendPingRequests(pingStatus, sourceNode);
+                }
+
+                setMultiCast(packet.payload.multicastIP, packet.payload.multicastPort);
             }
-
-            if (!pingStatus[sourceNode]) {
-                pingStatus[sourceNode] = TRUE;
-                sendPingRequests(pingStatus, sourceNode);
-            }
-            
-            setMultiCast(packet.payload.multicastIP, packet.payload.multicastPort);
         }
 
         // Received PING Reply IP Packet on pg socket
@@ -465,14 +418,19 @@ static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
 }
 
 int main(int argc, char* argv[]) {
-
+    Eth0AddrPairs eth0AddrPairs[10] = {0};
     IA IPList[MAXHOPS] = {0};
     int nodeNo = 0;
     int i;
 
+    // Get Host IP and MAC addresses
     HostIP = getIPAddrByVmNode(getHostVmNodeNo());
+    if (getEth0IfaceAddrPairs(eth0AddrPairs) <= 0) {
+        err_quit("No Eth0 interfaces found!");
+    }
+    memcpy(HostMAC, eth0AddrPairs[0].hwaddr, IF_HADDR);
+    printf("Tour running on VM%d (%s)\n", getHostVmNodeNo(), getIPStrByIPAddr(HostIP));
 
-    printf("Tour module running on VM%d (%s)\n", getHostVmNodeNo(), getIPStrByIPAddr(HostIP));
     createSockets();
 
     if (argc == 1) {

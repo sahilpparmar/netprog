@@ -1,66 +1,11 @@
 #include "arp.h"
-#define DEBUG 0
 
-static char filePath[1024], hostNode, hostIP[IPLEN];
+static char filePath[1024];
+static IA HostIP;
 
 static void sig_int(int signo) {
     unlink(filePath);
     exit(0);
-}
-
-static int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
-    struct hwa_info *hwahead, *hwa;
-    int totalPairs = 0;
-
-    printf("Following are all eth0 interface <IP address, HW address> pairs =>\n");
-
-    hwahead = Get_hw_addrs();
-    for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
-        if (strcmp(hwa->if_name, "eth0") == 0 || strcmp(hwa->if_name, "wlan0") == 0) {
-            struct sockaddr     *sa;
-            char   *ptr;
-            int    i, prflag;
-
-            // Store Pair information
-            eth0AddrPairs[totalPairs].ipaddr = ((struct sockaddr_in*) hwa->ip_addr)->sin_addr;
-            memcpy(eth0AddrPairs[totalPairs].hwaddr, hwa->if_haddr, IF_HADDR);
-#if DEBUG
-            printf("Pair => < %s, %s >\n", getIPStrByIPAddr(eth0AddrPairs[totalPairs].ipaddr),
-                    ethAddrNtoP(eth0AddrPairs[totalPairs].hwaddr));
-#endif
-            totalPairs++;
-
-            // Print Pair information
-            printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
-
-            if ((sa = hwa->ip_addr) != NULL)
-                printf("         IP addr = %s\n", Sock_ntop_host(sa, sizeof(*sa)));
-
-            prflag = 0;
-            i = 0;
-            do {
-                if (hwa->if_haddr[i] != '\0') {
-                    prflag = 1;
-                    break;
-                }
-            } while (++i < IF_HADDR);
-
-            if (prflag) {
-                printf("         HW addr = ");
-                ptr = hwa->if_haddr;
-                i = IF_HADDR;
-                do {
-                    printf("%.2x%s", *ptr++ & 0xff, (i == 1) ? " " : ":");
-                } while (--i > 0);
-            }
-#if DEBUG
-            printf("\n         interface index = %d\n", hwa->if_index);
-#endif
-        }
-    }
-    free(hwahead);
-    printf("\n");
-    return totalPairs;
 }
 
 static int bindAndListenUnixSocket() {
@@ -336,11 +281,12 @@ int main() {
     int totalPairs, pfSockFd, listenfd;
     fd_set fdSet;
 
-    hostNode = getHostVmNodeNo();
-    getIPStrByVmNode(hostIP, hostNode);
-    printf("ARP running on VM%d (%s)\n", hostNode, hostIP);
-
-    totalPairs = getEth0IfaceAddrPairs(eth0AddrPairs);
+    // Get Host IP and MAC addresses
+    HostIP = getIPAddrByVmNode(getHostVmNodeNo());
+    if ((totalPairs = getEth0IfaceAddrPairs(eth0AddrPairs)) <= 0) {
+        err_quit("No Eth0 interfaces found!");
+    }
+    printf("ARP running on VM%d (%s)\n", getHostVmNodeNo(), getIPStrByIPAddr(HostIP));
 
     Signal(SIGINT, sig_int);
     FD_ZERO(&fdSet);
