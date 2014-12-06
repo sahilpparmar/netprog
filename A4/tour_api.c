@@ -58,7 +58,6 @@ int areq(SA *IPaddr, socklen_t salen, HWAddr *hwaddr) {
 
     if (Select(sockfd + 1, &readfds, NULL, NULL, &timeout) == 0) {
         // AREQ timeout
-        err_msg("AREQ timeout");
         Close(sockfd);
         return -1;
     }

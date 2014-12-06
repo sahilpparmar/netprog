@@ -38,17 +38,21 @@ typedef struct {
     TourPayload payload;
 } IPPacket;
 
-typedef struct {
+struct PingIPPacket {
     struct ip iphead;
     struct icmp icmphead;
-} PingIPPacket;
+} __attribute__((packed));
 
-typedef struct {
+typedef struct PingIPPacket PingIPPacket;
+
+struct PingPacket {
     uint8_t destMAC[IF_HADDR];
     uint8_t srcMAC[IF_HADDR];
     uint16_t protocol;
     PingIPPacket pingIPPacket;
-} PingPacket;
+} __attribute__((packed));
+
+typedef struct PingPacket PingPacket;
 
 typedef struct {
     int      sll_ifindex;    /* Interface number */

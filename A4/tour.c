@@ -83,11 +83,11 @@ static bool isLastTourNode(IPPacket *packet, int nbytes) {
 
 static void setMultiCast(IA MulIP, uint16_t MulPort) {
 
-    if(joinedMulticast == TRUE) // Already listening on the Listening Socket
+    if (joinedMulticast == TRUE) {
+        // Already listening on the Listening Socket
         return;
 
-    else 
-    {
+    } else {
         const int reuse = 1;
         int status;
         struct group_req group;
@@ -127,12 +127,8 @@ static void setMultiCast(IA MulIP, uint16_t MulPort) {
         status = setsockopt(MulticastSD, IPPROTO_IP, IP_ADD_MEMBERSHIP, 
                 (const void *)&imreq, sizeof(struct ip_mreq));
 
-
-//        Mcast_join(MulticastSD, (const SA *)&saddr, sizeof(saddr), NULL, 0);
-
         joinedMulticast = TRUE;
     }
-
 }   
 
 static printIPPacket(IPPacket *packet, int nbytes) {
@@ -375,8 +371,7 @@ static void readAllSockets() {
 
         // Received PING Reply IP Packet on pg socket
         else if (FD_ISSET(PingReplySD, &readFdSet)) {
-            if (!recvPingReply(PingReplySD))
-                err_msg("Invalid Ping Reply!");
+             recvPingReply(PingReplySD);
         }
 
         // Received Multicast UDP message
@@ -405,7 +400,7 @@ int main(int argc, char* argv[]) {
     printf("Tour running on VM%d (%s)\n", getHostVmNodeNo(), getIPStrByIPAddr(HostIP));
 
     createSockets();
-
+    
     if (argc == 1) {
         printf("No Tour specified. Running in Listening Mode ==>\n");
 

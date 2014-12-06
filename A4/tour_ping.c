@@ -34,8 +34,40 @@ static char* getHWAddrByIPAddr(IA s_ipaddr, char *s_haddr) {
 
     if (areq((SA *) &sockAddr, sizeof(sockAddr), &hwAddr) == 0) {
         memcpy(s_haddr, hwAddr.sll_addr, ETH_ALEN);
+        return s_haddr;
     }
-    return s_haddr;
+    return NULL;
+}
+
+static void printPingPacket(PingPacket *packet) {
+    struct ip *iphdr = &packet->pingIPPacket.iphead;
+    struct icmp *icmp = &packet->pingIPPacket.icmphead;
+
+    printf("Ethernet Header =>\n");
+    printf ("Destination MAC: %s\n", ethAddrNtoP(packet->destMAC));
+    printf ("Source MAC: %s\n", ethAddrNtoP(packet->srcMAC));
+    printf("Protocol Number: 0x%x\n", ntohs(packet->protocol));
+
+    printf("IP Header =>\n");
+    printf("Header Len: %d\t", iphdr->ip_hl);
+    printf("Version: %d\t", iphdr->ip_v);
+    printf("TOS: %d\n", iphdr->ip_tos);
+    printf("Total Len: %d\t", ntohs(iphdr->ip_len));
+    printf("Ident Num: 0x%x\n", ntohs(iphdr->ip_id));
+    printf("Offset: %d\t", iphdr->ip_off);
+    printf("TTL: %d\t", iphdr->ip_ttl);
+    printf("Protocol Num: %d\n", iphdr->ip_p);
+    printf("Src IP: %s\t", getIPStrByIPAddr(iphdr->ip_src));
+    printf("Dst IP: %s\t", getIPStrByIPAddr(iphdr->ip_dst));
+    printf("Checksum: 0x%x\n", iphdr->ip_sum);
+
+    printf("ICMP Header =>\n");
+    printf("Type: %d\t", icmp->icmp_type);
+    printf("Code: %d\t", icmp->icmp_code);
+    printf("Checksum: 0x%x\n", icmp->icmp_cksum);
+    printf("ID: 0x%x\t", ntohs(icmp->icmp_id));
+    printf("Seq: %d\t", ntohs(icmp->icmp_seq));
+    printf("Data: %s\n", icmp->icmp_data);
 }
 
 static void fillPingIPHeader(PingIPPacket *packet, IA hostIP, IA destIP) {
@@ -46,11 +78,11 @@ static void fillPingIPHeader(PingIPPacket *packet, IA hostIP, IA destIP) {
     iphdr->ip_len = htons(sizeof(PingIPPacket));
     iphdr->ip_id  = htons(PING_REQ_ID);
     iphdr->ip_off = 0;
-    iphdr->ip_ttl = TTL_OUT;
+    iphdr->ip_ttl = 64;
     iphdr->ip_p   = IPPROTO_ICMP;
     iphdr->ip_src = hostIP;
     iphdr->ip_dst = destIP;
-    iphdr->ip_sum = htons(in_cksum((uint16_t *)packet, sizeof(PingIPPacket)));
+    iphdr->ip_sum = in_cksum((uint16_t *)packet, sizeof(PingIPPacket));
 }
 
 static void fillICMPEchoPacket(struct icmp *icmp) {
@@ -63,17 +95,20 @@ static void fillICMPEchoPacket(struct icmp *icmp) {
     Gettimeofday((struct timeval *) icmp->icmp_data, NULL);
 
     icmp->icmp_cksum = 0;
-    icmp->icmp_cksum = in_cksum((uint16_t *) icmp, 8 + DATALEN);
+    icmp->icmp_cksum = in_cksum((uint16_t *) icmp, sizeof(struct icmp));
 }
 
-static void sendPingPacket(int sockfd, int destVMNode, IA hostIP, char *hostMAC) {
+static bool sendPingPacket(int sockfd, int destVMNode, IA hostIP, char *hostMAC) {
     PingPacket packet;
     struct sockaddr_ll sockAddr;
     IA destIP;
     char destMAC[IF_HADDR];
 
     destIP = getIPAddrByVmNode(destVMNode);
-    getHWAddrByIPAddr(destIP, destMAC);
+    if (getHWAddrByIPAddr(destIP, destMAC) == NULL) {
+        err_msg("Disable Pinging due to AREQ timeout");
+        return FALSE;
+    }
 
     bzero(&packet, sizeof(packet));
     bzero(&sockAddr, sizeof(&sockAddr));
@@ -99,8 +134,13 @@ static void sendPingPacket(int sockfd, int destVMNode, IA hostIP, char *hostMAC)
     memcpy(sockAddr.sll_addr, destMAC, ETH_ALEN);
  
     // Send PING Request
+#if DEBUG
     printf("Sending a PING packet to VM%d\n", destVMNode);
+    printPingPacket(&packet);
+#endif
     Sendto(sockfd, (void *) &packet, sizeof(packet), 0, (SA *) &sockAddr, sizeof(sockAddr));
+
+    return TRUE;
 } 
 
 int sendPingRequests(int sockfd, bool *pingStatus, IA hostIP,
@@ -108,24 +148,17 @@ int sendPingRequests(int sockfd, bool *pingStatus, IA hostIP,
 {
     if (specific != -1) {
         assert(pingStatus[specific] && "Ping Status should be enable");
-        sendPingPacket(sockfd, specific, hostIP, hostMAC);
+        if (!sendPingPacket(sockfd, specific, hostIP, hostMAC))
+            pingStatus[specific] = FALSE;
     } else {
         int i;
         for (i = 1; i <= MAX_NODES; i++) {
             if (pingStatus[i]) {
-                sendPingPacket(sockfd, i, hostIP, hostMAC);
+                if (!sendPingPacket(sockfd, i, hostIP, hostMAC))
+                    pingStatus[i] = FALSE;
             }
         }
     }
-}
-
-void tv_sub(struct timeval *out, struct timeval *in) {
-    /* out -= in */
-    if ( (out->tv_usec -= in->tv_usec) < 0) {
-        --out->tv_sec;
-        out->tv_usec += 1000000;
-    }
-    out->tv_sec -= in->tv_sec;
 }
 
 bool recvPingReply(int sockfd) {
@@ -139,19 +172,16 @@ bool recvPingReply(int sockfd) {
     Gettimeofday(&tval, NULL);
     tvrecv = &tval;
 
-    printf("Receiving PING Reply\n");
     nbytes = Recvfrom(sockfd, &packet, sizeof(packet), 0, NULL, NULL);
-
+#if DEBUG
+    printf("Receiving PING Reply\n");
+#endif
     ip   = &packet.iphead;
     icmp = &packet.icmphead;
 
     iplen = ip->ip_hl << 2;
     /* malformed packet */
     if ((icmplen = nbytes - iplen) < 8)
-        return FALSE;
-
-    /* not a Ping ECHO reply */
-    if (icmp->icmp_type != ICMP_ECHOREPLY)
         return FALSE;
     /* not a response to our ECHO_REQUEST */
     if (ntohs(icmp->icmp_id) != PING_REQ_ID)
@@ -166,7 +196,7 @@ bool recvPingReply(int sockfd) {
 
     printf("%d bytes from %s: seq=%u, ttl=%d, rtt=%.3f ms\n",
             icmplen, getIPStrByIPAddr(ip->ip_src),
-            icmp->icmp_seq, ip->ip_ttl, rtt);
+            ntohs(icmp->icmp_seq), ip->ip_ttl, rtt);
 
     return TRUE;
 }

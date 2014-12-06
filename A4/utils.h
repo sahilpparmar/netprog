@@ -38,5 +38,6 @@ char* ethAddrNtoP(char *nMAC);
 int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs);
 char* curTimeStr();
 uint16_t in_cksum(uint16_t *addr, int len);
+void tv_sub(struct timeval *out, struct timeval *in);
 
 #endif /* !_UTILS_H */

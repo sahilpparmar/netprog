@@ -100,7 +100,9 @@ int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
     struct hwa_info *hwahead, *hwa;
     int totalPairs = 0;
 
+#if DEBUG
     printf("Following are all eth0 interface <IP address, HW address> pairs =>\n");
+#endif
 
     hwahead = Get_hw_addrs();
     for (hwa = hwahead; hwa != NULL; hwa = hwa->hwa_next) {
@@ -112,12 +114,9 @@ int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
             // Store Pair information
             eth0AddrPairs[totalPairs].ipaddr = ((struct sockaddr_in*) hwa->ip_addr)->sin_addr;
             memcpy(eth0AddrPairs[totalPairs].hwaddr, hwa->if_haddr, IF_HADDR);
-#if DEBUG
-            printf("Pair => < %s, %s >\n", getIPStrByIPAddr(eth0AddrPairs[totalPairs].ipaddr),
-                    ethAddrNtoP(eth0AddrPairs[totalPairs].hwaddr));
-#endif
             totalPairs++;
 
+#if DEBUG
             // Print Pair information
             printf("%s :%s", hwa->if_name, ((hwa->ip_alias) == IP_ALIAS) ? " (alias)\n" : "\n");
 
@@ -141,13 +140,11 @@ int getEth0IfaceAddrPairs(Eth0AddrPairs *eth0AddrPairs) {
                     printf("%.2x%s", *ptr++ & 0xff, (i == 1) ? " " : ":");
                 } while (--i > 0);
             }
-#if DEBUG
-            printf("\n         interface index = %d\n", hwa->if_index);
+            printf("\n         interface index = %d\n\n", hwa->if_index);
 #endif
         }
     }
     free(hwahead);
-    printf("\n");
     return totalPairs;
 }
 
@@ -189,3 +186,11 @@ uint16_t in_cksum(uint16_t *addr, int len) {
     return answer;
 }
 
+void tv_sub(struct timeval *out, struct timeval *in) {
+    /* out -= in */
+    if ( (out->tv_usec -= in->tv_usec) < 0) {
+        --out->tv_sec;
+        out->tv_usec += 1000000;
+    }
+    out->tv_sec -= in->tv_sec;
+}
