@@ -261,6 +261,7 @@ static void handleMulticast() {
     struct timeval timeout;
     int maxfd;
     uint32_t n;
+    int numNodes;
 
     n = Recvfrom(MulticastSD, msgBuf, MAX_BUF, 0, NULL, NULL);
     msgBuf[n] = '\0';
@@ -291,6 +292,7 @@ static void handleMulticast() {
         // Multicast Timeout
         if (n == 0) {
             printf("Terminating Tour Application.\n");
+            printf("Total Members in Multicast Group: %d\n", ++numNodes);
             printf("================================================================\n");
             exit(0);
         }
@@ -299,6 +301,7 @@ static void handleMulticast() {
             n = Recvfrom(MulticastSD, msgBuf, MAX_BUF, 0, NULL, NULL);
             msgBuf[n] = '\0';
             printf("Node VM%d => Received: %s\n", getHostVmNodeNo(), msgBuf);
+            numNodes++;
         }
     }
 }
